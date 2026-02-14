@@ -508,6 +508,10 @@ func (b *BeaconState) appendBuildersSweepWithdrawals(withdrawalIndex uint64, wit
 
 	ws := *withdrawals
 
+	if b.builders == nil {
+		return withdrawalIndex, 0, errors.New("builders list is nil")
+	}
+
 	buildersLimit := min(len(b.builders), int(cfg.MaxBuildersPerWithdrawalsSweep))
 
 	builderIndex := b.nextWithdrawalBuilderIndex
@@ -518,7 +522,10 @@ func (b *BeaconState) appendBuildersSweepWithdrawals(withdrawalIndex uint64, wit
 		}
 
 		builder := b.builders[builderIndex]
-		if builder != nil && builder.WithdrawableEpoch <= epoch && builder.Balance > 0 {
+		if builder == nil {
+			return withdrawalIndex, 0, fmt.Errorf("builder at index %d is nil", builderIndex)
+		}
+		if builder.WithdrawableEpoch <= epoch && builder.Balance > 0 {
 			ws = append(ws, &enginev1.Withdrawal{
 				Index:          withdrawalIndex,
 				ValidatorIndex: builderIndex.ToValidatorIndex(),
