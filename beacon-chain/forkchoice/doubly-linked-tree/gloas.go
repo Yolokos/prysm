@@ -319,7 +319,7 @@ func (f *ForkChoice) updateNewFullNodeWeight(fn *PayloadNode) {
 			fn.balance += f.balances[index]
 		}
 	}
-	fn.balance = fn.weight
+	fn.weight = fn.balance
 }
 
 func (s *Store) resolveVoteNode(r [32]byte, slot primitives.Slot, payloadStatus bool) (*PayloadNode, bool) {
