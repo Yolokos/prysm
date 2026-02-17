@@ -19,38 +19,101 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+var (
+	startTime          = time.Now()
+	transitionDuration = 3 * time.Hour
+)
+
+func init() {
+	go logTransitionCountdown()
+}
+
+func logTransitionCountdown() {
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		remaining := transitionDuration - time.Since(startTime)
+		if remaining <= 0 {
+			log.Info("Attestation validation: Now using new behavior (previous epoch support enabled)")
+			return
+		}
+		log.WithField("remaining", remaining.Round(time.Minute)).Info("Attestation validation: Time until switching to new behavior")
+	}
+}
+
 // The caller of this function must have a lock on forkchoice.
 func (s *Service) getRecentPreState(ctx context.Context, c *ethpb.Checkpoint) state.ReadOnlyBeaconState {
 	headEpoch := slots.ToEpoch(s.HeadSlot())
-	if c.Epoch+1 < headEpoch || c.Epoch == 0 {
-		return nil
+
+	// Use old behavior for first 3 hours, then switch to new behavior
+	useNewBehavior := time.Since(startTime) > transitionDuration
+
+	if useNewBehavior {
+		// NEW BEHAVIOR: Allow previous epoch attestations
+		if c.Epoch+1 < headEpoch || c.Epoch == 0 {
+			return nil
+		}
+	} else {
+		// OLD BEHAVIOR: Only current epoch
+		if c.Epoch < headEpoch || c.Epoch == 0 {
+			return nil
+		}
 	}
+
 	// Only use head state if the head state is compatible with the target checkpoint.
 	headRoot, err := s.HeadRoot(ctx)
 	if err != nil {
 		return nil
 	}
-	// headEpoch - 1 equals c.Epoch if c is from the previous epoch and equals c.Epoch - 1 if c is from the current epoch.
-	// We don't use the smaller c.Epoch - 1 because forkchoice would not have the data to answer that.
-	headDependent, err := s.cfg.ForkChoiceStore.DependentRootForEpoch([32]byte(headRoot), headEpoch-1)
-	if err != nil {
-		return nil
+
+	var headDependent, targetDependent [32]byte
+	if useNewBehavior {
+		// NEW: Use headEpoch-1 for dependent root lookups
+		// headEpoch - 1 equals c.Epoch if c is from the previous epoch and equals c.Epoch - 1 if c is from the current epoch.
+		// We don't use the smaller c.Epoch - 1 because forkchoice would not have the data to answer that.
+		headDependent, err = s.cfg.ForkChoiceStore.DependentRootForEpoch([32]byte(headRoot), headEpoch-1)
+		if err != nil {
+			return nil
+		}
+		targetDependent, err = s.cfg.ForkChoiceStore.DependentRootForEpoch([32]byte(c.Root), headEpoch-1)
+		if err != nil {
+			return nil
+		}
+	} else {
+		// OLD: Use c.Epoch-1 for dependent root lookups
+		headDependent, err = s.cfg.ForkChoiceStore.DependentRootForEpoch([32]byte(headRoot), c.Epoch-1)
+		if err != nil {
+			return nil
+		}
+		targetDependent, err = s.cfg.ForkChoiceStore.DependentRootForEpoch([32]byte(c.Root), c.Epoch-1)
+		if err != nil {
+			return nil
+		}
 	}
-	targetDependent, err := s.cfg.ForkChoiceStore.DependentRootForEpoch([32]byte(c.Root), headEpoch-1)
-	if err != nil {
-		return nil
-	}
+
 	if targetDependent != headDependent {
 		return nil
 	}
 
 	// If the head state alone is enough, we can return it directly read only.
-	if c.Epoch <= headEpoch {
-		st, err := s.HeadStateReadOnly(ctx)
-		if err != nil {
-			return nil
+	if useNewBehavior {
+		// NEW: Accept current or previous epoch
+		if c.Epoch <= headEpoch {
+			st, err := s.HeadStateReadOnly(ctx)
+			if err != nil {
+				return nil
+			}
+			return st
 		}
-		return st
+	} else {
+		// OLD: Only accept current epoch
+		if c.Epoch == headEpoch {
+			st, err := s.HeadStateReadOnly(ctx)
+			if err != nil {
+				return nil
+			}
+			return st
+		}
 	}
 	// At this point we can only have c.Epoch > headEpoch.
 	if !s.cfg.ForkChoiceStore.IsCanonical([32]byte(c.Root)) {
