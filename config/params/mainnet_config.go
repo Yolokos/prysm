@@ -337,6 +337,7 @@ var mainnetBeaconConfig = &BeaconChainConfig{
 	AttestationSubnetPrefixBits:     6,
 	SubnetsPerNode:                  2,
 	NodeIdBits:                      256,
+	MinValidatorScore:               500,
 
 	BlobSchedule: []BlobScheduleEntry{
 		{

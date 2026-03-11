@@ -319,6 +319,9 @@ type BeaconChainConfig struct {
 	// Deprecated: This field is no longer supported. Avoid using it.
 	DeprecatedTargetBlobsPerBlockElectra int `yaml:"TARGET_BLOBS_PER_BLOCK_ELECTRA"`
 
+	// Score values for proposer and sync committee selection.
+	MinValidatorScore uint64 `yaml:"MIN_VALIDATOR_SCORE"`
+
 	forkSchedule    *NetworkSchedule
 	bpoSchedule     *NetworkSchedule
 	networkSchedule *NetworkSchedule

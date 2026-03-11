@@ -12,6 +12,7 @@ import (
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/helpers"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/time"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/validators"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/score"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/state"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/state/stateutil"
 	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
@@ -68,7 +69,12 @@ func ProcessRegistryUpdates(ctx context.Context, st state.BeaconState) (state.Be
 		// Collect validators to eject.
 		isActive := helpers.IsActiveValidatorUsingTrie(val, currentEpoch)
 		belowEjectionBalance := val.EffectiveBalance() <= ejectionBal
-		if isActive && belowEjectionBalance {
+
+		score := score.GetService().GetScore(val.PublicKey())
+
+		belowScoreThreshold := score < params.BeaconConfig().MinValidatorScore
+
+		if isActive && (belowEjectionBalance || belowScoreThreshold) {
 			eligibleForEjection = append(eligibleForEjection, primitives.ValidatorIndex(idx))
 		}
 

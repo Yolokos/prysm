@@ -9,6 +9,7 @@ import (
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/helpers"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/time"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/transition"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/score"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/state"
 	state_native "github.com/OffchainLabs/prysm/v7/beacon-chain/state/state-native"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/state/stateutil"
@@ -310,6 +311,68 @@ func TestProcessRegistryUpdates_CanExits(t *testing.T) {
 	for i, validator := range newState.Validators() {
 		assert.Equal(t, exitEpoch, validator.ExitEpoch, "Could not update registry %d, unexpected exit slot", i)
 	}
+}
+
+func TestProcessRegistryUpdates_ValidatorsEjectedByScore(t *testing.T) {
+	score.SetService(&score.MockServiceLow{})
+
+	base := &ethpb.BeaconState{
+		Slot: 0,
+		Validators: []*ethpb.Validator{
+			{
+				ExitEpoch:        params.BeaconConfig().FarFutureEpoch,
+				EffectiveBalance: params.BeaconConfig().EjectionBalance + 1000,
+				PublicKey:        make([]byte, 48),
+			},
+		},
+		FinalizedCheckpoint: &ethpb.Checkpoint{Root: make([]byte, fieldparams.RootLength)},
+	}
+
+	beaconState, err := state_native.InitializeFromProtoPhase0(base)
+	require.NoError(t, err)
+
+	newState, err := epoch.ProcessRegistryUpdates(t.Context(), beaconState)
+	require.NoError(t, err)
+
+	validator := newState.Validators()[0]
+
+	assert.NotEqual(
+		t,
+		params.BeaconConfig().FarFutureEpoch,
+		validator.ExitEpoch,
+		"Validator should be ejected because of low score",
+	)
+}
+
+func TestProcessRegistryUpdates_ValidatorsNotEjectedByScore(t *testing.T) {
+	score.SetService(&score.MockService{})
+
+	base := &ethpb.BeaconState{
+		Slot: 0,
+		Validators: []*ethpb.Validator{
+			{
+				ExitEpoch:        params.BeaconConfig().FarFutureEpoch,
+				EffectiveBalance: params.BeaconConfig().EjectionBalance + 1000,
+				PublicKey:        make([]byte, 48),
+			},
+		},
+		FinalizedCheckpoint: &ethpb.Checkpoint{Root: make([]byte, fieldparams.RootLength)},
+	}
+
+	beaconState, err := state_native.InitializeFromProtoPhase0(base)
+	require.NoError(t, err)
+
+	newState, err := epoch.ProcessRegistryUpdates(t.Context(), beaconState)
+	require.NoError(t, err)
+
+	validator := newState.Validators()[0]
+
+	assert.Equal(
+		t,
+		params.BeaconConfig().FarFutureEpoch,
+		validator.ExitEpoch,
+		"Validator should NOT be ejected because score is high",
+	)
 }
 
 func buildState(t testing.TB, slot primitives.Slot, validatorCount uint64) state.BeaconState {
