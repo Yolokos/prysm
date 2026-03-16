@@ -8,6 +8,7 @@ import (
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/helpers"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/time"
 	forkchoicetypes "github.com/OffchainLabs/prysm/v7/beacon-chain/forkchoice/types"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/score"
 	state_native "github.com/OffchainLabs/prysm/v7/beacon-chain/state/state-native"
 	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
 	"github.com/OffchainLabs/prysm/v7/config/params"
@@ -575,6 +576,78 @@ func TestActiveValidatorIndices(t *testing.T) {
 			}
 			assert.DeepEqual(t, tt.want, got, "ActiveValidatorIndices()")
 		})
+	}
+}
+
+func TestComputeProposerIndex_ScoreAffectsSelection(t *testing.T) {
+	helpers.ClearCache()
+
+	score.SetService(&score.MockServiceMixed{})
+
+	pk0 := make([]byte, 48)
+	pk0[0] = 0
+
+	pk1 := make([]byte, 48)
+	pk1[0] = 2
+
+	validators := []*ethpb.Validator{
+		{
+			PublicKey:        pk0,
+			EffectiveBalance: params.BeaconConfig().MaxEffectiveBalance,
+			ExitEpoch:        params.BeaconConfig().FarFutureEpoch,
+		},
+		{
+			PublicKey:        pk1,
+			EffectiveBalance: params.BeaconConfig().MaxEffectiveBalance,
+			ExitEpoch:        params.BeaconConfig().FarFutureEpoch,
+		},
+	}
+
+	state, err := state_native.InitializeFromProtoPhase0(&ethpb.BeaconState{
+		Validators:  validators,
+		RandaoMixes: make([][]byte, params.BeaconConfig().EpochsPerHistoricalVector),
+	})
+	require.NoError(t, err)
+
+	indices, err := helpers.ActiveValidatorIndices(t.Context(), state, 0)
+	require.NoError(t, err)
+
+	seed, err := helpers.Seed(state, 0, params.BeaconConfig().DomainBeaconProposer)
+	require.NoError(t, err)
+
+	var highScoreWins int
+	var lowScoreWins int
+
+	iterations := 2000
+
+	for i := 0; i < iterations; i++ {
+
+		seedWithSlot := append(seed[:], bytesutil.Bytes8(uint64(i))...)
+		seedHash := hash.Hash(seedWithSlot)
+
+		index, err := helpers.ComputeProposerIndex(state, indices, seedHash)
+		require.NoError(t, err)
+
+		if index == 0 {
+			highScoreWins++
+		} else {
+			lowScoreWins++
+		}
+	}
+
+	t.Logf("High score validator wins: %d", highScoreWins)
+	t.Logf("Low score validator wins: %d", lowScoreWins)
+
+	ratio := float64(highScoreWins) / float64(highScoreWins+lowScoreWins)
+
+	t.Logf("High score selection ratio: %.3f", ratio)
+
+	if highScoreWins <= lowScoreWins {
+		t.Fatalf(
+			"validator with higher score should win more often: high=%d low=%d",
+			highScoreWins,
+			lowScoreWins,
+		)
 	}
 }
 

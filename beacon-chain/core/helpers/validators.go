@@ -8,6 +8,7 @@ import (
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/cache"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/time"
 	forkchoicetypes "github.com/OffchainLabs/prysm/v7/beacon-chain/forkchoice/types"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/score"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/state"
 	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
 	"github.com/OffchainLabs/prysm/v7/config/params"
@@ -419,21 +420,27 @@ func ComputeProposerIndex(bState state.ReadOnlyBeaconState, activeIndices []prim
 		if err != nil {
 			return 0, err
 		}
+
 		effectiveBal := v.EffectiveBalance()
+
+		scoreVal := uint64(score.GetService().GetScore(v.PublicKey()))
+
+		weight := effectiveBal * (1000 + scoreVal) / 1000
+
 		if bState.Version() >= version.Electra {
 			binary.LittleEndian.PutUint64(seedBuffer[len(seed):], i/16)
 			randomBytes := hashFunc(seedBuffer)
 			offset := (i % 16) * 2
 			randomValue := uint64(randomBytes[offset]) | uint64(randomBytes[offset+1])<<8
 
-			if effectiveBal*fieldparams.MaxRandomValueElectra >= cfg.MaxEffectiveBalanceElectra*randomValue {
+			if weight*fieldparams.MaxRandomValueElectra >= cfg.MaxEffectiveBalanceElectra*randomValue {
 				return candidateIndex, nil
 			}
 		} else {
 			binary.LittleEndian.PutUint64(seedBuffer[len(seed):], i/32)
 			randomByte := hashFunc(seedBuffer)[i%32]
 
-			if effectiveBal*fieldparams.MaxRandomByte >= cfg.MaxEffectiveBalance*uint64(randomByte) {
+			if weight*fieldparams.MaxRandomByte >= cfg.MaxEffectiveBalance*uint64(randomByte) {
 				return candidateIndex, nil
 			}
 		}

@@ -320,12 +320,21 @@ func TestProcessRegistryUpdates_ValidatorsEjectedByScore(t *testing.T) {
 		Slot: 0,
 		Validators: []*ethpb.Validator{
 			{
+				ActivationEpoch:  0,
 				ExitEpoch:        params.BeaconConfig().FarFutureEpoch,
 				EffectiveBalance: params.BeaconConfig().EjectionBalance + 1000,
-				PublicKey:        make([]byte, 48),
+				PublicKey:        []byte{0},
+			},
+			{
+				ActivationEpoch:  0,
+				ExitEpoch:        params.BeaconConfig().FarFutureEpoch,
+				EffectiveBalance: params.BeaconConfig().EjectionBalance + 1000,
+				PublicKey:        []byte{1},
 			},
 		},
-		FinalizedCheckpoint: &ethpb.Checkpoint{Root: make([]byte, fieldparams.RootLength)},
+		FinalizedCheckpoint: &ethpb.Checkpoint{
+			Root: make([]byte, fieldparams.RootLength),
+		},
 	}
 
 	beaconState, err := state_native.InitializeFromProtoPhase0(base)
@@ -340,7 +349,7 @@ func TestProcessRegistryUpdates_ValidatorsEjectedByScore(t *testing.T) {
 		t,
 		params.BeaconConfig().FarFutureEpoch,
 		validator.ExitEpoch,
-		"Validator should be ejected because of low score",
+		"Low score validator should be ejected",
 	)
 }
 
@@ -373,6 +382,131 @@ func TestProcessRegistryUpdates_ValidatorsNotEjectedByScore(t *testing.T) {
 		validator.ExitEpoch,
 		"Validator should NOT be ejected because score is high",
 	)
+}
+
+func TestProcessRegistryUpdates_FallbackScoreSelection(t *testing.T) {
+
+	score.SetService(&score.MockServiceMixed{
+		TargetCount: 2,
+	})
+
+	pk0 := make([]byte, 48)
+	pk0[0] = 0
+
+	pk1 := make([]byte, 48)
+	pk1[0] = 1
+
+	pk2 := make([]byte, 48)
+	pk2[0] = 2
+
+	validators := []*ethpb.Validator{
+		{
+			ActivationEpoch:  0,
+			EffectiveBalance: 40000000000,
+			ExitEpoch:        params.BeaconConfig().FarFutureEpoch,
+			PublicKey:        pk0,
+		},
+		{
+			ActivationEpoch:  0,
+			EffectiveBalance: 40000000000,
+			ExitEpoch:        params.BeaconConfig().FarFutureEpoch,
+			PublicKey:        pk1,
+		},
+		{
+			ActivationEpoch:  0,
+			EffectiveBalance: 40000000000,
+			ExitEpoch:        params.BeaconConfig().FarFutureEpoch,
+			PublicKey:        pk2,
+		},
+	}
+
+	base := &ethpb.BeaconState{
+		Slot:       0,
+		Validators: validators,
+		FinalizedCheckpoint: &ethpb.Checkpoint{
+			Root: make([]byte, fieldparams.RootLength),
+		},
+	}
+
+	beaconState, err := state_native.InitializeFromProtoPhase0(base)
+	require.NoError(t, err)
+
+	newState, err := epoch.ProcessRegistryUpdates(t.Context(), beaconState)
+	require.NoError(t, err)
+
+	vals := newState.Validators()
+
+	assert.Equal(t, 3, len(vals))
+
+	assert.NotEqual(
+		t,
+		params.BeaconConfig().FarFutureEpoch,
+		vals[2].ExitEpoch,
+		"validator with lowest score should be ejected",
+	)
+}
+
+func TestProcessRegistryUpdates_FallbackMinScoreReduction(t *testing.T) {
+
+	score.SetService(&score.MockServiceMixed{
+		TargetCount: 3,
+	})
+
+	pk0 := make([]byte, 48)
+	pk0[0] = 0
+
+	pk1 := make([]byte, 48)
+	pk1[0] = 1
+
+	pk2 := make([]byte, 48)
+	pk2[0] = 2
+
+	validators := []*ethpb.Validator{
+		{
+			ActivationEpoch:  0,
+			EffectiveBalance: 40000000000,
+			ExitEpoch:        params.BeaconConfig().FarFutureEpoch,
+			PublicKey:        pk0,
+		},
+		{
+			ActivationEpoch:  0,
+			EffectiveBalance: 40000000000,
+			ExitEpoch:        params.BeaconConfig().FarFutureEpoch,
+			PublicKey:        pk1,
+		},
+		{
+			ActivationEpoch:  0,
+			EffectiveBalance: 40000000000,
+			ExitEpoch:        params.BeaconConfig().FarFutureEpoch,
+			PublicKey:        pk2,
+		},
+	}
+
+	base := &ethpb.BeaconState{
+		Slot:       0,
+		Validators: validators,
+		FinalizedCheckpoint: &ethpb.Checkpoint{
+			Root: make([]byte, fieldparams.RootLength),
+		},
+	}
+
+	beaconState, err := state_native.InitializeFromProtoPhase0(base)
+	require.NoError(t, err)
+
+	newState, err := epoch.ProcessRegistryUpdates(t.Context(), beaconState)
+	require.NoError(t, err)
+
+	vals := newState.Validators()
+
+	assert.Equal(t, 3, len(vals))
+
+	for i := range vals {
+		assert.Equal(
+			t,
+			params.BeaconConfig().FarFutureEpoch,
+			vals[i].ExitEpoch,
+		)
+	}
 }
 
 func buildState(t testing.TB, slot primitives.Slot, validatorCount uint64) state.BeaconState {

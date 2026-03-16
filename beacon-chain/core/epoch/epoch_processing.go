@@ -24,6 +24,12 @@ import (
 	"github.com/pkg/errors"
 )
 
+type candidate struct {
+	index primitives.ValidatorIndex
+	score uint64
+	stake uint64
+}
+
 // ProcessRegistryUpdates rotates validators in and out of active pool.
 // the amount to rotate is determined churn limit.
 //
@@ -49,81 +55,134 @@ import (
 //	     validator = state.validators[index]
 //	     validator.activation_epoch = compute_activation_exit_epoch(get_current_epoch(state))
 func ProcessRegistryUpdates(ctx context.Context, st state.BeaconState) (state.BeaconState, error) {
-	currentEpoch := time.CurrentEpoch(st)
-	var err error
-	ejectionBal := params.BeaconConfig().EjectionBalance
 
-	// To avoid copying the state validator set via st.Validators(), we will perform a read only pass
-	// over the validator set while collecting validator indices where the validator copy is actually
-	// necessary, then we will process these operations.
+	currentEpoch := time.CurrentEpoch(st)
+	ejectionBal := params.BeaconConfig().EjectionBalance
+	targetValidators := score.GetService().TargetValidatorsCount()
+
+	var err error
+
 	eligibleForActivationQ := make([]primitives.ValidatorIndex, 0)
 	eligibleForActivation := make([]primitives.ValidatorIndex, 0)
-	eligibleForEjection := make([]primitives.ValidatorIndex, 0)
+
+	exitCandidates := make([]primitives.ValidatorIndex, 0)
+	candidates := make([]candidate, 0)
 
 	if err := st.ReadFromEveryValidator(func(idx int, val state.ReadOnlyValidator) error {
-		// Collect validators eligible to enter the activation queue.
+
+		index := primitives.ValidatorIndex(idx)
+
 		if helpers.IsEligibleForActivationQueue(val, currentEpoch) {
-			eligibleForActivationQ = append(eligibleForActivationQ, primitives.ValidatorIndex(idx))
+			eligibleForActivationQ = append(eligibleForActivationQ, index)
 		}
 
-		// Collect validators to eject.
-		isActive := helpers.IsActiveValidatorUsingTrie(val, currentEpoch)
-		belowEjectionBalance := val.EffectiveBalance() <= ejectionBal
-
-		score := score.GetService().GetScore(val.PublicKey())
-
-		belowScoreThreshold := score < params.BeaconConfig().MinValidatorScore
-
-		if isActive && (belowEjectionBalance || belowScoreThreshold) {
-			eligibleForEjection = append(eligibleForEjection, primitives.ValidatorIndex(idx))
-		}
-
-		// Collect validators eligible for activation and not yet dequeued for activation.
 		if helpers.IsEligibleForActivationUsingROVal(st, val) {
-			eligibleForActivation = append(eligibleForActivation, primitives.ValidatorIndex(idx))
+			eligibleForActivation = append(eligibleForActivation, index)
 		}
+
+		stake := val.EffectiveBalance()
+		scoreValue := score.GetService().GetScore(val.PublicKey())
+
+		isActive := helpers.IsActiveValidatorUsingTrie(val, currentEpoch)
+
+		if isActive && stake <= ejectionBal {
+			exitCandidates = append(exitCandidates, index)
+			return nil
+		}
+
+		candidates = append(candidates, candidate{
+			index: index,
+			score: scoreValue,
+			stake: stake,
+		})
 
 		return nil
+
 	}); err != nil {
 		return st, fmt.Errorf("failed to read validators: %w", err)
 	}
 
-	// Process validators for activation eligibility.
-	activationEligibilityEpoch := time.CurrentEpoch(st) + 1
-	for _, idx := range eligibleForActivationQ {
-		v, err := st.ValidatorAtIndex(idx)
-		if err != nil {
-			return nil, err
+	sort.Slice(candidates, func(i, j int) bool {
+
+		wi := candidates[i].stake * (1000 + candidates[i].score)
+		wj := candidates[j].stake * (1000 + candidates[j].score)
+
+		return wi > wj
+	})
+
+	if len(candidates) > 0 {
+
+		selected := make([]candidate, 0, targetValidators)
+
+		for _, c := range candidates {
+
+			selected = append(selected, c)
+
+			if len(selected) == targetValidators {
+				break
+			}
 		}
-		v.ActivationEligibilityEpoch = activationEligibilityEpoch
-		if err := st.UpdateValidatorAtIndex(idx, v); err != nil {
-			return nil, err
+
+		selectedMap := make(map[primitives.ValidatorIndex]struct{})
+
+		for _, c := range selected {
+			selectedMap[c.index] = struct{}{}
 		}
+
+		for _, c := range candidates {
+
+			if _, ok := selectedMap[c.index]; !ok {
+
+				val, err := st.ValidatorAtIndex(c.index)
+				if err != nil {
+					return nil, err
+				}
+
+				if helpers.IsActiveValidator(val, currentEpoch) {
+					exitCandidates = append(exitCandidates, c.index)
+				}
+			}
+		}
+		params.BeaconConfig().MinValidatorScore = selected[len(selected)-1].score
 	}
 
-	// Process validators eligible for ejection.
-	if len(eligibleForEjection) > 0 {
-		// It is safe to compute exitInfo once for all ejections in the epoch, as the ExitInfo pointer is
-		// updated within InitiateValidatorExit which is the only function that uses it.
+	if len(exitCandidates) > 0 {
+
 		exitInfo := validators.ExitInformation(st)
-		for _, idx := range eligibleForEjection {
-			// Here is fine to do a quadratic loop since this should
-			// barely happen
+
+		for _, idx := range exitCandidates {
+
 			st, err = validators.InitiateValidatorExit(ctx, st, idx, exitInfo)
+
 			if err != nil && !errors.Is(err, validators.ErrValidatorAlreadyExited) {
 				return nil, errors.Wrapf(err, "could not initiate exit for validator %d", idx)
 			}
 		}
 	}
 
-	// Queue validators eligible for activation and not yet dequeued for activation.
+	activationEligibilityEpoch := currentEpoch + 1
+
+	for _, idx := range eligibleForActivationQ {
+
+		v, err := st.ValidatorAtIndex(idx)
+		if err != nil {
+			return nil, err
+		}
+
+		v.ActivationEligibilityEpoch = activationEligibilityEpoch
+
+		if err := st.UpdateValidatorAtIndex(idx, v); err != nil {
+			return nil, err
+		}
+	}
+
 	sort.Sort(sortableIndices{indices: eligibleForActivation, state: st})
 
-	// Only activate just enough validators according to the activation churn limit.
 	limit := uint64(len(eligibleForActivation))
+
 	activeValidatorCount, err := helpers.ActiveValidatorCount(ctx, st, currentEpoch)
 	if err != nil {
-		return nil, errors.Wrap(err, "could not get active validator count")
+		return nil, err
 	}
 
 	churnLimit := helpers.ValidatorActivationChurnLimit(activeValidatorCount)
@@ -132,22 +191,26 @@ func ProcessRegistryUpdates(ctx context.Context, st state.BeaconState) (state.Be
 		churnLimit = helpers.ValidatorActivationChurnLimitDeneb(activeValidatorCount)
 	}
 
-	// Prevent churn limit cause index out of bound.
 	if churnLimit < limit {
 		limit = churnLimit
 	}
 
 	activationExitEpoch := helpers.ActivationExitEpoch(currentEpoch)
+
 	for _, index := range eligibleForActivation[:limit] {
+
 		validator, err := st.ValidatorAtIndex(index)
 		if err != nil {
 			return nil, err
 		}
+
 		validator.ActivationEpoch = activationExitEpoch
+
 		if err := st.UpdateValidatorAtIndex(index, validator); err != nil {
 			return nil, err
 		}
 	}
+
 	return st, nil
 }
 

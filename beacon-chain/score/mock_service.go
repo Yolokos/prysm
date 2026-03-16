@@ -12,3 +12,7 @@ func (m *MockService) RegisterValidator(pubkey [48]byte) error {
 	m.RegisterCalls++
 	return nil
 }
+
+func (m *MockService) TargetValidatorsCount() int {
+	return 1
+}
