@@ -25,9 +25,10 @@ import (
 )
 
 type candidate struct {
-	index primitives.ValidatorIndex
-	score uint64
-	stake uint64
+	index            primitives.ValidatorIndex
+	score            uint64
+	stake            uint64
+	passesEpochScore bool
 }
 
 // ProcessRegistryUpdates rotates validators in and out of active pool.
@@ -55,140 +56,102 @@ type candidate struct {
 //	     validator = state.validators[index]
 //	     validator.activation_epoch = compute_activation_exit_epoch(get_current_epoch(state))
 func ProcessRegistryUpdates(ctx context.Context, st state.BeaconState) (state.BeaconState, error) {
-
 	currentEpoch := time.CurrentEpoch(st)
 	ejectionBal := params.BeaconConfig().EjectionBalance
-	targetValidators := score.GetService().TargetValidatorsCount()
+	minScore := params.BeaconConfig().MinValidatorScore
+	epochScore := score.GetService().GetEpochRangeScore()
 
 	var err error
 
 	eligibleForActivationQ := make([]primitives.ValidatorIndex, 0)
 	eligibleForActivation := make([]primitives.ValidatorIndex, 0)
-
-	exitCandidates := make([]primitives.ValidatorIndex, 0)
-	candidates := make([]candidate, 0)
+	eligibleForEjection := make([]primitives.ValidatorIndex, 0)
 
 	if err := st.ReadFromEveryValidator(func(idx int, val state.ReadOnlyValidator) error {
-
 		index := primitives.ValidatorIndex(idx)
+		scoreValue := score.GetService().GetScore(val.PublicKey())
 
 		if helpers.IsEligibleForActivationQueue(val, currentEpoch) {
 			eligibleForActivationQ = append(eligibleForActivationQ, index)
 		}
 
-		if helpers.IsEligibleForActivationUsingROVal(st, val) {
-			eligibleForActivation = append(eligibleForActivation, index)
-		}
-
-		stake := val.EffectiveBalance()
-		scoreValue := score.GetService().GetScore(val.PublicKey())
-
 		isActive := helpers.IsActiveValidatorUsingTrie(val, currentEpoch)
-
-		if isActive && stake <= ejectionBal {
-			exitCandidates = append(exitCandidates, index)
+		if isActive && val.EffectiveBalance() <= ejectionBal {
+			eligibleForEjection = append(eligibleForEjection, index)
 			return nil
 		}
-
-		candidates = append(candidates, candidate{
-			index: index,
-			score: scoreValue,
-			stake: stake,
-		})
+		if isActive && scoreValue < minScore {
+			eligibleForEjection = append(eligibleForEjection, index)
+			return nil
+		}
+		if helpers.IsEligibleForActivationUsingROVal(st, val) {
+			if scoreValue >= minScore {
+				eligibleForActivation = append(eligibleForActivation, index)
+			}
+		}
 
 		return nil
-
 	}); err != nil {
 		return st, fmt.Errorf("failed to read validators: %w", err)
 	}
 
-	sort.Slice(candidates, func(i, j int) bool {
-
-		wi := candidates[i].stake * (1000 + candidates[i].score)
-		wj := candidates[j].stake * (1000 + candidates[j].score)
-
-		return wi > wj
-	})
-
-	if len(candidates) > 0 {
-
-		selected := make([]candidate, 0, targetValidators)
-
-		for _, c := range candidates {
-
-			selected = append(selected, c)
-
-			if len(selected) == targetValidators {
-				break
-			}
+	activationEligibilityEpoch := currentEpoch + 1
+	for _, idx := range eligibleForActivationQ {
+		v, err := st.ValidatorAtIndex(idx)
+		if err != nil {
+			return nil, err
 		}
-
-		selectedMap := make(map[primitives.ValidatorIndex]struct{})
-
-		for _, c := range selected {
-			selectedMap[c.index] = struct{}{}
+		v.ActivationEligibilityEpoch = activationEligibilityEpoch
+		if err := st.UpdateValidatorAtIndex(idx, v); err != nil {
+			return nil, err
 		}
-
-		for _, c := range candidates {
-
-			if _, ok := selectedMap[c.index]; !ok {
-
-				val, err := st.ValidatorAtIndex(c.index)
-				if err != nil {
-					return nil, err
-				}
-
-				if helpers.IsActiveValidator(val, currentEpoch) {
-					exitCandidates = append(exitCandidates, c.index)
-				}
-			}
-		}
-		params.BeaconConfig().MinValidatorScore = selected[len(selected)-1].score
 	}
 
-	if len(exitCandidates) > 0 {
-
+	if len(eligibleForEjection) > 0 {
 		exitInfo := validators.ExitInformation(st)
-
-		for _, idx := range exitCandidates {
-
+		for _, idx := range eligibleForEjection {
 			st, err = validators.InitiateValidatorExit(ctx, st, idx, exitInfo)
-
 			if err != nil && !errors.Is(err, validators.ErrValidatorAlreadyExited) {
 				return nil, errors.Wrapf(err, "could not initiate exit for validator %d", idx)
 			}
 		}
 	}
 
-	activationEligibilityEpoch := currentEpoch + 1
+	sort.SliceStable(eligibleForActivation, func(i, j int) bool {
+		vi, _ := st.ValidatorAtIndex(eligibleForActivation[i])
+		vj, _ := st.ValidatorAtIndex(eligibleForActivation[j])
 
-	for _, idx := range eligibleForActivationQ {
+		var pki, pkj [48]byte
+		copy(pki[:], vi.PublicKey)
+		copy(pkj[:], vj.PublicKey)
 
-		v, err := st.ValidatorAtIndex(idx)
-		if err != nil {
-			return nil, err
+		si := score.GetService().GetScore(pki)
+		sj := score.GetService().GetScore(pkj)
+
+		pi := si >= epochScore
+		pj := sj >= epochScore
+
+		if pi != pj {
+			return pi
 		}
 
-		v.ActivationEligibilityEpoch = activationEligibilityEpoch
+		wi := vi.EffectiveBalance * (1000 + si)
+		wj := vj.EffectiveBalance * (1000 + sj)
 
-		if err := st.UpdateValidatorAtIndex(idx, v); err != nil {
-			return nil, err
-		}
-	}
-
-	sort.Sort(sortableIndices{indices: eligibleForActivation, state: st})
+		return wi > wj
+	})
 
 	limit := uint64(len(eligibleForActivation))
 
-	activeValidatorCount, err := helpers.ActiveValidatorCount(ctx, st, currentEpoch)
-	if err != nil {
-		return nil, err
-	}
+	// activeValidatorCount, err := helpers.ActiveValidatorCount(ctx, st, currentEpoch)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	churnLimit := helpers.ValidatorActivationChurnLimit(activeValidatorCount)
+	churnLimit := score.GetService().TargetValidatorsCount()
 
 	if st.Version() >= version.Deneb {
-		churnLimit = helpers.ValidatorActivationChurnLimitDeneb(activeValidatorCount)
+		churnLimit = score.GetService().TargetValidatorsCount()
 	}
 
 	if churnLimit < limit {
@@ -198,15 +161,14 @@ func ProcessRegistryUpdates(ctx context.Context, st state.BeaconState) (state.Be
 	activationExitEpoch := helpers.ActivationExitEpoch(currentEpoch)
 
 	for _, index := range eligibleForActivation[:limit] {
-
-		validator, err := st.ValidatorAtIndex(index)
+		v, err := st.ValidatorAtIndex(index)
 		if err != nil {
 			return nil, err
 		}
 
-		validator.ActivationEpoch = activationExitEpoch
+		v.ActivationEpoch = activationExitEpoch
 
-		if err := st.UpdateValidatorAtIndex(index, validator); err != nil {
+		if err := st.UpdateValidatorAtIndex(index, v); err != nil {
 			return nil, err
 		}
 	}

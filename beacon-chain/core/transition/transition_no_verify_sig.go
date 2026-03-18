@@ -12,7 +12,9 @@ import (
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/transition/interop"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/validators"
 	v "github.com/OffchainLabs/prysm/v7/beacon-chain/core/validators"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/score"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/state"
+	"github.com/OffchainLabs/prysm/v7/config/params"
 	"github.com/OffchainLabs/prysm/v7/consensus-types/blocks"
 	"github.com/OffchainLabs/prysm/v7/consensus-types/interfaces"
 	"github.com/OffchainLabs/prysm/v7/crypto/bls"
@@ -73,6 +75,24 @@ func ExecuteStateTransitionNoVerifyAnySig(
 	set, st, err := ProcessBlockNoVerifyAnySig(ctx, st, signed)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "could not process block")
+	}
+
+	block := signed.Block()
+
+	execPayload, err := block.Body().Execution()
+	if err == nil {
+		execBlock := execPayload.BlockNumber()
+
+		slot := block.Slot()
+		slotsPerEpoch := params.BeaconConfig().SlotsPerEpoch
+
+		if slot%slotsPerEpoch == 0 {
+			score.GetService().SetEpochStart(execBlock)
+		}
+
+		if (slot+1)%slotsPerEpoch == 0 {
+			score.GetService().SetEpochEnd(execBlock)
+		}
 	}
 
 	// State root validation.

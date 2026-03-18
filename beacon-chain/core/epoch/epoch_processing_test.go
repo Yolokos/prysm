@@ -178,12 +178,16 @@ func TestProcessRegistryUpdates_NoRotation(t *testing.T) {
 }
 
 func TestProcessRegistryUpdates_EligibleToActivate(t *testing.T) {
+	score.SetService(&score.MockService{
+		TargetCount: 4,
+	})
+
 	finalizedEpoch := primitives.Epoch(4)
 	base := &ethpb.BeaconState{
 		Slot:                5 * params.BeaconConfig().SlotsPerEpoch,
 		FinalizedCheckpoint: &ethpb.Checkpoint{Epoch: finalizedEpoch, Root: make([]byte, fieldparams.RootLength)},
 	}
-	limit := helpers.ValidatorActivationChurnLimit(0)
+	limit := score.GetService().TargetValidatorsCount()
 	for i := uint64(0); i < limit+10; i++ {
 		base.Validators = append(base.Validators, &ethpb.Validator{
 			ActivationEligibilityEpoch: finalizedEpoch,
@@ -209,13 +213,17 @@ func TestProcessRegistryUpdates_EligibleToActivate(t *testing.T) {
 }
 
 func TestProcessRegistryUpdates_EligibleToActivate_Cancun(t *testing.T) {
+	score.SetService(&score.MockService{
+		TargetCount: 10,
+	})
+
 	finalizedEpoch := primitives.Epoch(4)
 	base := &ethpb.BeaconStateDeneb{
 		Slot:                5 * params.BeaconConfig().SlotsPerEpoch,
 		FinalizedCheckpoint: &ethpb.Checkpoint{Epoch: finalizedEpoch, Root: make([]byte, fieldparams.RootLength)},
 	}
 	cfg := params.BeaconConfig()
-	cfg.MinPerEpochChurnLimit = 10
+	cfg.MinPerEpochChurnLimit = score.GetService().TargetValidatorsCount()
 	cfg.ChurnLimitQuotient = 1
 	params.OverrideBeaconConfig(cfg)
 
@@ -233,11 +241,11 @@ func TestProcessRegistryUpdates_EligibleToActivate_Cancun(t *testing.T) {
 	require.NoError(t, err)
 	for i, validator := range newState.Validators() {
 		// Note: In Deneb, only validators indices before `MaxPerEpochActivationChurnLimit` should be activated.
-		if uint64(i) < params.BeaconConfig().MaxPerEpochActivationChurnLimit && validator.ActivationEpoch != helpers.ActivationExitEpoch(currentEpoch) {
+		if uint64(i) < score.GetService().TargetValidatorsCount() && validator.ActivationEpoch != helpers.ActivationExitEpoch(currentEpoch) {
 			t.Errorf("Could not update registry %d, validators failed to activate: wanted activation epoch %d, got %d",
 				i, helpers.ActivationExitEpoch(currentEpoch), validator.ActivationEpoch)
 		}
-		if uint64(i) >= params.BeaconConfig().MaxPerEpochActivationChurnLimit && validator.ActivationEpoch != params.BeaconConfig().FarFutureEpoch {
+		if uint64(i) >= score.GetService().TargetValidatorsCount() && validator.ActivationEpoch != params.BeaconConfig().FarFutureEpoch {
 			t.Errorf("Could not update registry %d, validators should not have been activated, wanted activation epoch: %d, got %d",
 				i, params.BeaconConfig().FarFutureEpoch, validator.ActivationEpoch)
 		}
@@ -314,7 +322,9 @@ func TestProcessRegistryUpdates_CanExits(t *testing.T) {
 }
 
 func TestProcessRegistryUpdates_ValidatorsEjectedByScore(t *testing.T) {
-	score.SetService(&score.MockServiceLow{})
+	score.SetService(&score.MockServiceLow{
+		TargetCount: 2,
+	})
 
 	base := &ethpb.BeaconState{
 		Slot: 0,
@@ -446,8 +456,7 @@ func TestProcessRegistryUpdates_FallbackScoreSelection(t *testing.T) {
 	)
 }
 
-func TestProcessRegistryUpdates_FallbackMinScoreReduction(t *testing.T) {
-
+func TestProcessRegistryUpdates_StrictMinScoreEjection(t *testing.T) {
 	score.SetService(&score.MockServiceMixed{
 		TargetCount: 3,
 	})
@@ -500,13 +509,32 @@ func TestProcessRegistryUpdates_FallbackMinScoreReduction(t *testing.T) {
 
 	assert.Equal(t, 3, len(vals))
 
+	ejected := 0
+	active := 0
+
 	for i := range vals {
-		assert.Equal(
-			t,
-			params.BeaconConfig().FarFutureEpoch,
-			vals[i].ExitEpoch,
-		)
+		switch vals[i].PublicKey[0] {
+
+		case 0, 1:
+			assert.Equal(
+				t,
+				params.BeaconConfig().FarFutureEpoch,
+				vals[i].ExitEpoch,
+			)
+			active++
+
+		case 2:
+			assert.NotEqual(
+				t,
+				params.BeaconConfig().FarFutureEpoch,
+				vals[i].ExitEpoch,
+			)
+			ejected++
+		}
 	}
+
+	assert.Equal(t, 2, active)
+	assert.Equal(t, 1, ejected)
 }
 
 func buildState(t testing.TB, slot primitives.Slot, validatorCount uint64) state.BeaconState {
