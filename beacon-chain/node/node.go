@@ -45,6 +45,7 @@ import (
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/p2p"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/p2p/peers"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/rpc"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/score"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/slasher"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/startup"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/state"
@@ -368,6 +369,11 @@ func registerServices(cliCtx *cli.Context, beacon *BeaconNode, synchronizer *sta
 	log.Debugln("Registering Attestation Pool Service")
 	if err := beacon.registerAttestationPool(); err != nil {
 		return errors.Wrap(err, "could not register attestation pool service")
+	}
+
+	log.Debugln("Registering Score Service")
+	if err := beacon.registerScoreService(cliCtx); err != nil {
+		return errors.Wrap(err, "could not register score service")
 	}
 
 	log.Debugln("Registering Blockchain Service")
@@ -694,6 +700,23 @@ func (b *BeaconNode) registerAttestationPool() error {
 		return errors.Wrap(err, "could not register atts pool service")
 	}
 	return b.services.RegisterService(s)
+}
+
+func (b *BeaconNode) registerScoreService(cliCtx *cli.Context) error {
+	rpcURL := cliCtx.String(flags.ExecutionEngineEndpoint.Name)
+	contractAddr := cliCtx.String(flags.ScoreContractFlag.Name)
+
+	scoreService, err := score.NewAIService(
+		rpcURL,
+		contractAddr,
+	)
+	if err != nil {
+		return errors.Wrap(err, "could not create score service")
+	}
+
+	score.InitService(scoreService)
+
+	return b.services.RegisterService(scoreService)
 }
 
 func (b *BeaconNode) registerSlashingPoolService() error {

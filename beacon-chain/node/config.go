@@ -129,6 +129,12 @@ func configureEth1Config(cliCtx *cli.Context) error {
 			return err
 		}
 	}
+	if cliCtx.IsSet(flags.ScoreContractFlag.Name) {
+		c.ScoreContractAddress = cliCtx.String(flags.ScoreContractFlag.Name)
+		if err := params.SetActive(c); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

@@ -1,29 +1,38 @@
 package score
 
 type MockService struct {
+	Scores map[[48]byte]uint64
+
+	EpochScore  uint64
+	TargetCount uint64
+
 	RegisterCalls int
-	TargetCount   int
+
+	BlockNumber uint64
+	StartBlock  uint64
+	EndBlock    uint64
 }
 
 func (m *MockService) GetScore(pubkey [48]byte) uint64 {
-	return 700
-}
-
-func (m *MockService) RegisterValidator(pubkey [48]byte) error {
-	m.RegisterCalls++
-	return nil
-}
-
-func (m *MockService) TargetValidatorsCount() uint64 {
-	return uint64(m.TargetCount)
+	if m.Scores == nil {
+		return 0
+	}
+	return m.Scores[pubkey]
 }
 
 func (m *MockService) GetEpochRangeScore() uint64 {
-	return 200
+	return m.EpochScore
 }
 
-func (m *MockService) SetEpochStart(startBlock uint64) {
+func (m *MockService) TargetValidatorsCount() uint64 {
+	return m.TargetCount
 }
 
-func (m *MockService) SetEpochEnd(endBlock uint64) {
+func (m *MockService) SetBlockNumber(block uint64) {
+	m.BlockNumber = block
+}
+
+func (m *MockService) SetBlockRange(start, end uint64) {
+	m.StartBlock = start
+	m.EndBlock = end
 }

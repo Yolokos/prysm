@@ -31,6 +31,10 @@ func BlockRootAtSlot(state state.ReadOnlyBeaconState, slot primitives.Slot) ([]b
 	return state.BlockRootAtIndex(uint64(slot % params.BeaconConfig().SlotsPerHistoricalRoot))
 }
 
+func SlotToEpoch(slot primitives.Slot) primitives.Epoch {
+	return primitives.Epoch(uint64(slot) / uint64(params.BeaconConfig().SlotsPerEpoch))
+}
+
 // StateRootAtSlot returns the cached state root at that particular slot. If no state
 // root has been cached it will return a zero-hash.
 func StateRootAtSlot(state state.ReadOnlyBeaconState, slot primitives.Slot) ([]byte, error) {

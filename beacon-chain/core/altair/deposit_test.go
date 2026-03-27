@@ -5,7 +5,6 @@ import (
 
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/altair"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/signing"
-	"github.com/OffchainLabs/prysm/v7/beacon-chain/score"
 	state_native "github.com/OffchainLabs/prysm/v7/beacon-chain/state/state-native"
 	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
 	"github.com/OffchainLabs/prysm/v7/config/params"
@@ -372,26 +371,4 @@ func TestProcessDeposits_MerkleBranchFailsVerification(t *testing.T) {
 	want := "deposit root did not verify"
 	_, err = altair.ProcessDeposits(t.Context(), beaconState, b.Block.Body.Deposits)
 	assert.ErrorContains(t, want, err)
-}
-
-func TestAddValidatorToRegistry_RegistersScore(t *testing.T) {
-	mock := &score.MockService{}
-	score.SetService(mock)
-
-	pubkey := make([]byte, 48)
-	withdrawal := make([]byte, 32)
-
-	beaconState, err := state_native.InitializeFromProtoPhase0(&ethpb.BeaconState{})
-	require.NoError(t, err)
-
-	err = altair.AddValidatorToRegistry(
-		beaconState,
-		pubkey,
-		withdrawal,
-		1000,
-	)
-
-	require.NoError(t, err)
-
-	assert.Equal(t, 1, mock.RegisterCalls)
 }

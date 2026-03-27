@@ -156,6 +156,8 @@ func TestProcessFinalUpdates_CanProcess(t *testing.T) {
 }
 
 func TestProcessRegistryUpdates_NoRotation(t *testing.T) {
+	score.InitService(&score.MockService{})
+
 	base := &ethpb.BeaconState{
 		Slot: 5 * params.BeaconConfig().SlotsPerEpoch,
 		Validators: []*ethpb.Validator{
@@ -178,8 +180,17 @@ func TestProcessRegistryUpdates_NoRotation(t *testing.T) {
 }
 
 func TestProcessRegistryUpdates_EligibleToActivate(t *testing.T) {
-	score.SetService(&score.MockService{
+	score.InitService(&score.MockService{
 		TargetCount: 4,
+		Scores: func() map[[48]byte]uint64 {
+			m := make(map[[48]byte]uint64)
+			for i := 0; i < 4; i++ {
+				var pk [48]byte
+				pk[0] = byte(i)
+				m[pk] = params.BeaconConfig().MinValidatorScore // >= minScore
+			}
+			return m
+		}(),
 	})
 
 	finalizedEpoch := primitives.Epoch(4)
@@ -187,7 +198,10 @@ func TestProcessRegistryUpdates_EligibleToActivate(t *testing.T) {
 		Slot:                5 * params.BeaconConfig().SlotsPerEpoch,
 		FinalizedCheckpoint: &ethpb.Checkpoint{Epoch: finalizedEpoch, Root: make([]byte, fieldparams.RootLength)},
 	}
-	limit := score.GetService().TargetValidatorsCount()
+	scoreService, err := score.GetService()
+	require.NoError(t, err)
+
+	limit := scoreService.TargetValidatorsCount()
 	for i := uint64(0); i < limit+10; i++ {
 		base.Validators = append(base.Validators, &ethpb.Validator{
 			ActivationEligibilityEpoch: finalizedEpoch,
@@ -213,9 +227,21 @@ func TestProcessRegistryUpdates_EligibleToActivate(t *testing.T) {
 }
 
 func TestProcessRegistryUpdates_EligibleToActivate_Cancun(t *testing.T) {
-	score.SetService(&score.MockService{
+	score.InitService(&score.MockService{
 		TargetCount: 10,
+		Scores: func() map[[48]byte]uint64 {
+			m := make(map[[48]byte]uint64)
+			for i := 0; i < 10; i++ {
+				var pk [48]byte
+				pk[0] = byte(i)
+				m[pk] = params.BeaconConfig().MinValidatorScore // >= minScore
+			}
+			return m
+		}(),
 	})
+
+	scoreService, err := score.GetService()
+	require.NoError(t, err)
 
 	finalizedEpoch := primitives.Epoch(4)
 	base := &ethpb.BeaconStateDeneb{
@@ -223,7 +249,7 @@ func TestProcessRegistryUpdates_EligibleToActivate_Cancun(t *testing.T) {
 		FinalizedCheckpoint: &ethpb.Checkpoint{Epoch: finalizedEpoch, Root: make([]byte, fieldparams.RootLength)},
 	}
 	cfg := params.BeaconConfig()
-	cfg.MinPerEpochChurnLimit = score.GetService().TargetValidatorsCount()
+	cfg.MinPerEpochChurnLimit = scoreService.TargetValidatorsCount()
 	cfg.ChurnLimitQuotient = 1
 	params.OverrideBeaconConfig(cfg)
 
@@ -241,11 +267,11 @@ func TestProcessRegistryUpdates_EligibleToActivate_Cancun(t *testing.T) {
 	require.NoError(t, err)
 	for i, validator := range newState.Validators() {
 		// Note: In Deneb, only validators indices before `MaxPerEpochActivationChurnLimit` should be activated.
-		if uint64(i) < score.GetService().TargetValidatorsCount() && validator.ActivationEpoch != helpers.ActivationExitEpoch(currentEpoch) {
+		if uint64(i) < scoreService.TargetValidatorsCount() && validator.ActivationEpoch != helpers.ActivationExitEpoch(currentEpoch) {
 			t.Errorf("Could not update registry %d, validators failed to activate: wanted activation epoch %d, got %d",
 				i, helpers.ActivationExitEpoch(currentEpoch), validator.ActivationEpoch)
 		}
-		if uint64(i) >= score.GetService().TargetValidatorsCount() && validator.ActivationEpoch != params.BeaconConfig().FarFutureEpoch {
+		if uint64(i) >= scoreService.TargetValidatorsCount() && validator.ActivationEpoch != params.BeaconConfig().FarFutureEpoch {
 			t.Errorf("Could not update registry %d, validators should not have been activated, wanted activation epoch: %d, got %d",
 				i, params.BeaconConfig().FarFutureEpoch, validator.ActivationEpoch)
 		}
@@ -322,7 +348,18 @@ func TestProcessRegistryUpdates_CanExits(t *testing.T) {
 }
 
 func TestProcessRegistryUpdates_ValidatorsEjectedByScore(t *testing.T) {
-	score.SetService(&score.MockServiceLow{
+	var pk0Arr [48]byte
+	pk0Arr[0] = 0
+
+	var pk1Arr [48]byte
+	pk1Arr[0] = 1
+
+	score.InitService(&score.MockService{
+		Scores: map[[48]byte]uint64{
+			pk0Arr: 0,
+			pk1Arr: math.MaxUint64,
+		},
+		EpochScore:  1,
 		TargetCount: 2,
 	})
 
@@ -333,13 +370,13 @@ func TestProcessRegistryUpdates_ValidatorsEjectedByScore(t *testing.T) {
 				ActivationEpoch:  0,
 				ExitEpoch:        params.BeaconConfig().FarFutureEpoch,
 				EffectiveBalance: params.BeaconConfig().EjectionBalance + 1000,
-				PublicKey:        []byte{0},
+				PublicKey:        pk0Arr[:],
 			},
 			{
 				ActivationEpoch:  0,
 				ExitEpoch:        params.BeaconConfig().FarFutureEpoch,
 				EffectiveBalance: params.BeaconConfig().EjectionBalance + 1000,
-				PublicKey:        []byte{1},
+				PublicKey:        pk1Arr[:],
 			},
 		},
 		FinalizedCheckpoint: &ethpb.Checkpoint{
@@ -364,7 +401,16 @@ func TestProcessRegistryUpdates_ValidatorsEjectedByScore(t *testing.T) {
 }
 
 func TestProcessRegistryUpdates_ValidatorsNotEjectedByScore(t *testing.T) {
-	score.SetService(&score.MockService{})
+	var pk0Arr [48]byte
+	pk0Arr[0] = 0
+
+	score.InitService(&score.MockService{
+		TargetCount: 2,
+		Scores: map[[48]byte]uint64{
+			pk0Arr: math.MaxUint64,
+		},
+		EpochScore: 1,
+	})
 
 	base := &ethpb.BeaconState{
 		Slot: 0,
@@ -372,7 +418,7 @@ func TestProcessRegistryUpdates_ValidatorsNotEjectedByScore(t *testing.T) {
 			{
 				ExitEpoch:        params.BeaconConfig().FarFutureEpoch,
 				EffectiveBalance: params.BeaconConfig().EjectionBalance + 1000,
-				PublicKey:        make([]byte, 48),
+				PublicKey:        pk0Arr[:],
 			},
 		},
 		FinalizedCheckpoint: &ethpb.Checkpoint{Root: make([]byte, fieldparams.RootLength)},
@@ -395,38 +441,43 @@ func TestProcessRegistryUpdates_ValidatorsNotEjectedByScore(t *testing.T) {
 }
 
 func TestProcessRegistryUpdates_FallbackScoreSelection(t *testing.T) {
+	var pk0Arr [48]byte
+	pk0Arr[0] = 0
 
-	score.SetService(&score.MockServiceMixed{
+	var pk1Arr [48]byte
+	pk1Arr[0] = 1
+
+	var pk2Arr [48]byte
+	pk2Arr[0] = 2
+
+	score.InitService(&score.MockService{
+		Scores: map[[48]byte]uint64{
+			pk0Arr: 600,
+			pk1Arr: 500,
+			pk2Arr: 0,
+		},
+		EpochScore:  1,
 		TargetCount: 2,
 	})
-
-	pk0 := make([]byte, 48)
-	pk0[0] = 0
-
-	pk1 := make([]byte, 48)
-	pk1[0] = 1
-
-	pk2 := make([]byte, 48)
-	pk2[0] = 2
 
 	validators := []*ethpb.Validator{
 		{
 			ActivationEpoch:  0,
 			EffectiveBalance: 40000000000,
 			ExitEpoch:        params.BeaconConfig().FarFutureEpoch,
-			PublicKey:        pk0,
+			PublicKey:        pk0Arr[:],
 		},
 		{
 			ActivationEpoch:  0,
 			EffectiveBalance: 40000000000,
 			ExitEpoch:        params.BeaconConfig().FarFutureEpoch,
-			PublicKey:        pk1,
+			PublicKey:        pk1Arr[:],
 		},
 		{
 			ActivationEpoch:  0,
 			EffectiveBalance: 40000000000,
 			ExitEpoch:        params.BeaconConfig().FarFutureEpoch,
-			PublicKey:        pk2,
+			PublicKey:        pk2Arr[:],
 		},
 	}
 
@@ -457,10 +508,6 @@ func TestProcessRegistryUpdates_FallbackScoreSelection(t *testing.T) {
 }
 
 func TestProcessRegistryUpdates_StrictMinScoreEjection(t *testing.T) {
-	score.SetService(&score.MockServiceMixed{
-		TargetCount: 3,
-	})
-
 	pk0 := make([]byte, 48)
 	pk0[0] = 0
 
@@ -469,6 +516,16 @@ func TestProcessRegistryUpdates_StrictMinScoreEjection(t *testing.T) {
 
 	pk2 := make([]byte, 48)
 	pk2[0] = 2
+
+	score.InitService(&score.MockService{
+		Scores: map[[48]byte]uint64{
+			{0}: 600,
+			{1}: 500,
+			{2}: 0,
+		},
+		EpochScore:  1,
+		TargetCount: 3,
+	})
 
 	validators := []*ethpb.Validator{
 		{

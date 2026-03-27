@@ -95,7 +95,7 @@ DEPOSIT_CHAIN_ID: 12345 # Override for e2e tests
 DEPOSIT_NETWORK_ID: 12345 # Override for e2e tests
 # Configured on a per testnet basis
 DEPOSIT_CONTRACT_ADDRESS: 0x4242424242424242424242424242424242424242
-
+SCORE_CONTRACT_ADDRESS: 0x4040404040404040404040404040404040404040
 # Updated penalty values
 # ---------------------------------------------------------------
 # 3 * 2**24 (= 50,331,648)

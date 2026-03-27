@@ -168,6 +168,7 @@ func (v *validator) ProposeBlock(ctx context.Context, slot primitives.Slot, pubK
 	}
 
 	blkResp, err := v.validatorClient.ProposeBeaconBlock(ctx, genericSignedBlock)
+
 	if err != nil {
 		log.WithField("slot", slot).WithError(err).Error("Failed to propose block")
 		if v.emitAccountMetrics {

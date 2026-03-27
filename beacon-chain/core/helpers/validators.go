@@ -423,7 +423,12 @@ func ComputeProposerIndex(bState state.ReadOnlyBeaconState, activeIndices []prim
 
 		effectiveBal := v.EffectiveBalance()
 
-		scoreVal := uint64(score.GetService().GetScore(v.PublicKey()))
+		scoreService, err := score.GetService()
+		if err != nil {
+			return 0, errors.Wrap(err, "could not get score service")
+		}
+
+		scoreVal := uint64(scoreService.GetScore(v.PublicKey()))
 
 		weight := effectiveBal * (1000 + scoreVal) / 1000
 

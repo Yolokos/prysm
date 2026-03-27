@@ -5,7 +5,6 @@ import (
 
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/blocks"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/helpers"
-	"github.com/OffchainLabs/prysm/v7/beacon-chain/score"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/state"
 	"github.com/OffchainLabs/prysm/v7/config/params"
 	"github.com/OffchainLabs/prysm/v7/encoding/bytesutil"
@@ -160,11 +159,6 @@ func AddValidatorToRegistry(beaconState state.BeaconState, pubKey []byte, withdr
 	if err := beaconState.AppendValidator(val); err != nil {
 		return err
 	}
-
-	var pk [48]byte
-	copy(pk[:], pubKey)
-
-	score.GetService().RegisterValidator(pk)
 
 	if err := beaconState.AppendBalance(amount); err != nil {
 		return err

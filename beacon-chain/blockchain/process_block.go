@@ -7,6 +7,7 @@ import (
 
 	"github.com/OffchainLabs/go-bitfield"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/blocks"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/execution"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/helpers"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/peerdas"
 	coreTime "github.com/OffchainLabs/prysm/v7/beacon-chain/core/time"
@@ -14,6 +15,7 @@ import (
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/das"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/db/filesystem"
 	forkchoicetypes "github.com/OffchainLabs/prysm/v7/beacon-chain/forkchoice/types"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/score"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/state"
 	"github.com/OffchainLabs/prysm/v7/config/features"
 	fieldparams "github.com/OffchainLabs/prysm/v7/config/fieldparams"
@@ -112,6 +114,19 @@ func (s *Service) postBlockProcess(cfg *postBlockProcessConfig) error {
 	if err := s.sendFCU(cfg, fcuArgs); err != nil {
 		return errors.Wrap(err, "could not send FCU to engine")
 	}
+
+	payload, err := cfg.roblock.Block().Body().Execution()
+	if err != nil {
+		log.WithError(err).Error("Could not get execution payload from block")
+		return nil
+	}
+	bn := payload.BlockNumber()
+	scoreService, err := score.GetService()
+	if err != nil {
+		log.WithError(err).Error("Could not get score service")
+		return nil
+	}
+	scoreService.SetBlockNumber(bn)
 
 	return nil
 }
@@ -374,6 +389,23 @@ func (s *Service) updateEpochBoundaryCaches(ctx context.Context, st state.Beacon
 // Epoch boundary tasks: it copies the headState and updates the epoch boundary
 // caches.
 func (s *Service) handleEpochBoundary(ctx context.Context, slot primitives.Slot, headState state.BeaconState, blockRoot []byte) error {
+	currentEpoch := helpers.SlotToEpoch(slot)
+
+	startBlock, endBlock := execution.GetEpochExecutionRange(
+		ctx,
+		s.cfg.BeaconDB,
+		currentEpoch,
+	)
+
+	if startBlock != nil && endBlock != nil {
+		scoreService, err := score.GetService()
+		if err != nil {
+			log.WithError(err).Error("Could not get score service")
+			return nil
+		}
+		scoreService.SetBlockRange(*startBlock, *endBlock)
+	}
+
 	ctx, span := trace.StartSpan(ctx, "blockChain.handleEpochBoundary")
 	defer span.End()
 	// return early if we are advancing to a past epoch

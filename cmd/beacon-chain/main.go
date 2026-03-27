@@ -41,6 +41,7 @@ import (
 
 var appFlags = []cli.Flag{
 	flags.DepositContractFlag,
+	flags.ScoreContractFlag,
 	flags.ExecutionEngineEndpoint,
 	flags.ExecutionEngineHeaders,
 	flags.ExecutionJWTSecretFlag,

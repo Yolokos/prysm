@@ -2,7 +2,7 @@ load("@prysm//tools/go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "go_default_library",
-    srcs = ["upgrade.go"],
+    srcs = ["upgrade.go", "execution_range.go"],
     importpath = "github.com/OffchainLabs/prysm/v7/beacon-chain/core/execution",
     visibility = [
         "//beacon-chain:__subpackages__",
@@ -12,10 +12,12 @@ go_library(
         "//validator/client:__pkg__",
     ],
     deps = [
+        "//beacon-chain/db:go_default_library",
         "//beacon-chain/core/time:go_default_library",
         "//beacon-chain/state:go_default_library",
         "//beacon-chain/state/state-native:go_default_library",
         "//config/params:go_default_library",
+        "//consensus-types/primitives:go_default_library",
         "//proto/engine/v1:go_default_library",
         "//proto/prysm/v1alpha1:go_default_library",
     ],

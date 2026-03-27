@@ -59,9 +59,15 @@ func ProcessRegistryUpdates(ctx context.Context, st state.BeaconState) (state.Be
 	currentEpoch := time.CurrentEpoch(st)
 	ejectionBal := params.BeaconConfig().EjectionBalance
 	minScore := params.BeaconConfig().MinValidatorScore
-	epochScore := score.GetService().GetEpochRangeScore()
 
 	var err error
+
+	scoreService, err := score.GetService()
+	if err != nil {
+		return st, errors.Wrap(err, "could not get score service")
+	}
+
+	epochScore := scoreService.GetEpochRangeScore()
 
 	eligibleForActivationQ := make([]primitives.ValidatorIndex, 0)
 	eligibleForActivation := make([]primitives.ValidatorIndex, 0)
@@ -69,7 +75,7 @@ func ProcessRegistryUpdates(ctx context.Context, st state.BeaconState) (state.Be
 
 	if err := st.ReadFromEveryValidator(func(idx int, val state.ReadOnlyValidator) error {
 		index := primitives.ValidatorIndex(idx)
-		scoreValue := score.GetService().GetScore(val.PublicKey())
+		scoreValue := scoreService.GetScore(val.PublicKey())
 
 		if helpers.IsEligibleForActivationQueue(val, currentEpoch) {
 			eligibleForActivationQ = append(eligibleForActivationQ, index)
@@ -125,8 +131,8 @@ func ProcessRegistryUpdates(ctx context.Context, st state.BeaconState) (state.Be
 		copy(pki[:], vi.PublicKey)
 		copy(pkj[:], vj.PublicKey)
 
-		si := score.GetService().GetScore(pki)
-		sj := score.GetService().GetScore(pkj)
+		si := scoreService.GetScore(pki)
+		sj := scoreService.GetScore(pkj)
 
 		pi := si >= epochScore
 		pj := sj >= epochScore
@@ -148,10 +154,10 @@ func ProcessRegistryUpdates(ctx context.Context, st state.BeaconState) (state.Be
 	// 	return nil, err
 	// }
 
-	churnLimit := score.GetService().TargetValidatorsCount()
+	churnLimit := scoreService.TargetValidatorsCount()
 
 	if st.Version() >= version.Deneb {
-		churnLimit = score.GetService().TargetValidatorsCount()
+		churnLimit = scoreService.TargetValidatorsCount()
 	}
 
 	if churnLimit < limit {

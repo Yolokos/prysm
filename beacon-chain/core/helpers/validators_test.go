@@ -268,6 +268,9 @@ func TestBeaconProposerIndex_BadState(t *testing.T) {
 }
 
 func TestComputeProposerIndex_Compatibility(t *testing.T) {
+	score.InitService(&score.MockService{
+		Scores: map[[48]byte]uint64{},
+	})
 	helpers.ClearCache()
 
 	validators := make([]*ethpb.Validator, params.BeaconConfig().MinGenesisActiveValidatorCount)
@@ -581,23 +584,27 @@ func TestActiveValidatorIndices(t *testing.T) {
 
 func TestComputeProposerIndex_ScoreAffectsSelection(t *testing.T) {
 	helpers.ClearCache()
+	var pk0Arr [48]byte
+	pk0Arr[0] = 0
 
-	score.SetService(&score.MockServiceMixed{})
+	var pk1Arr [48]byte
+	pk1Arr[0] = 2
 
-	pk0 := make([]byte, 48)
-	pk0[0] = 0
-
-	pk1 := make([]byte, 48)
-	pk1[0] = 2
+	score.InitService(&score.MockService{
+		Scores: map[[48]byte]uint64{
+			pk0Arr: 400,
+			pk1Arr: 120,
+		},
+	})
 
 	validators := []*ethpb.Validator{
 		{
-			PublicKey:        pk0,
+			PublicKey:        pk0Arr[:],
 			EffectiveBalance: params.BeaconConfig().MaxEffectiveBalance,
 			ExitEpoch:        params.BeaconConfig().FarFutureEpoch,
 		},
 		{
-			PublicKey:        pk1,
+			PublicKey:        pk1Arr[:],
 			EffectiveBalance: params.BeaconConfig().MaxEffectiveBalance,
 			ExitEpoch:        params.BeaconConfig().FarFutureEpoch,
 		},
