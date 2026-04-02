@@ -182,10 +182,10 @@ func TestProcessRegistryUpdates_NoRotation(t *testing.T) {
 func TestProcessRegistryUpdates_EligibleToActivate(t *testing.T) {
 	score.InitService(&score.MockService{
 		TargetCount: 4,
-		Scores: func() map[[48]byte]uint64 {
-			m := make(map[[48]byte]uint64)
+		Scores: func() map[[32]byte]uint64 {
+			m := make(map[[32]byte]uint64)
 			for i := 0; i < 4; i++ {
-				var pk [48]byte
+				var pk [32]byte
 				pk[0] = byte(i)
 				m[pk] = params.BeaconConfig().MinValidatorScore // >= minScore
 			}
@@ -201,7 +201,7 @@ func TestProcessRegistryUpdates_EligibleToActivate(t *testing.T) {
 	scoreService, err := score.GetService()
 	require.NoError(t, err)
 
-	limit := scoreService.TargetValidatorsCount()
+	limit, _ := scoreService.TargetValidatorsCount()
 	for i := uint64(0); i < limit+10; i++ {
 		base.Validators = append(base.Validators, &ethpb.Validator{
 			ActivationEligibilityEpoch: finalizedEpoch,
@@ -229,10 +229,10 @@ func TestProcessRegistryUpdates_EligibleToActivate(t *testing.T) {
 func TestProcessRegistryUpdates_EligibleToActivate_Cancun(t *testing.T) {
 	score.InitService(&score.MockService{
 		TargetCount: 10,
-		Scores: func() map[[48]byte]uint64 {
-			m := make(map[[48]byte]uint64)
+		Scores: func() map[[32]byte]uint64 {
+			m := make(map[[32]byte]uint64)
 			for i := 0; i < 10; i++ {
-				var pk [48]byte
+				var pk [32]byte
 				pk[0] = byte(i)
 				m[pk] = params.BeaconConfig().MinValidatorScore // >= minScore
 			}
@@ -249,7 +249,8 @@ func TestProcessRegistryUpdates_EligibleToActivate_Cancun(t *testing.T) {
 		FinalizedCheckpoint: &ethpb.Checkpoint{Epoch: finalizedEpoch, Root: make([]byte, fieldparams.RootLength)},
 	}
 	cfg := params.BeaconConfig()
-	cfg.MinPerEpochChurnLimit = scoreService.TargetValidatorsCount()
+	limit, _ := scoreService.TargetValidatorsCount()
+	cfg.MinPerEpochChurnLimit = limit
 	cfg.ChurnLimitQuotient = 1
 	params.OverrideBeaconConfig(cfg)
 
@@ -267,11 +268,11 @@ func TestProcessRegistryUpdates_EligibleToActivate_Cancun(t *testing.T) {
 	require.NoError(t, err)
 	for i, validator := range newState.Validators() {
 		// Note: In Deneb, only validators indices before `MaxPerEpochActivationChurnLimit` should be activated.
-		if uint64(i) < scoreService.TargetValidatorsCount() && validator.ActivationEpoch != helpers.ActivationExitEpoch(currentEpoch) {
+		if uint64(i) < limit && validator.ActivationEpoch != helpers.ActivationExitEpoch(currentEpoch) {
 			t.Errorf("Could not update registry %d, validators failed to activate: wanted activation epoch %d, got %d",
 				i, helpers.ActivationExitEpoch(currentEpoch), validator.ActivationEpoch)
 		}
-		if uint64(i) >= scoreService.TargetValidatorsCount() && validator.ActivationEpoch != params.BeaconConfig().FarFutureEpoch {
+		if uint64(i) >= limit && validator.ActivationEpoch != params.BeaconConfig().FarFutureEpoch {
 			t.Errorf("Could not update registry %d, validators should not have been activated, wanted activation epoch: %d, got %d",
 				i, params.BeaconConfig().FarFutureEpoch, validator.ActivationEpoch)
 		}
@@ -348,14 +349,14 @@ func TestProcessRegistryUpdates_CanExits(t *testing.T) {
 }
 
 func TestProcessRegistryUpdates_ValidatorsEjectedByScore(t *testing.T) {
-	var pk0Arr [48]byte
+	var pk0Arr [32]byte
 	pk0Arr[0] = 0
 
-	var pk1Arr [48]byte
+	var pk1Arr [32]byte
 	pk1Arr[0] = 1
 
 	score.InitService(&score.MockService{
-		Scores: map[[48]byte]uint64{
+		Scores: map[[32]byte]uint64{
 			pk0Arr: 0,
 			pk1Arr: math.MaxUint64,
 		},
@@ -401,12 +402,12 @@ func TestProcessRegistryUpdates_ValidatorsEjectedByScore(t *testing.T) {
 }
 
 func TestProcessRegistryUpdates_ValidatorsNotEjectedByScore(t *testing.T) {
-	var pk0Arr [48]byte
+	var pk0Arr [32]byte
 	pk0Arr[0] = 0
 
 	score.InitService(&score.MockService{
 		TargetCount: 2,
-		Scores: map[[48]byte]uint64{
+		Scores: map[[32]byte]uint64{
 			pk0Arr: math.MaxUint64,
 		},
 		EpochScore: 1,
@@ -441,17 +442,17 @@ func TestProcessRegistryUpdates_ValidatorsNotEjectedByScore(t *testing.T) {
 }
 
 func TestProcessRegistryUpdates_FallbackScoreSelection(t *testing.T) {
-	var pk0Arr [48]byte
+	var pk0Arr [32]byte
 	pk0Arr[0] = 0
 
-	var pk1Arr [48]byte
+	var pk1Arr [32]byte
 	pk1Arr[0] = 1
 
-	var pk2Arr [48]byte
+	var pk2Arr [32]byte
 	pk2Arr[0] = 2
 
 	score.InitService(&score.MockService{
-		Scores: map[[48]byte]uint64{
+		Scores: map[[32]byte]uint64{
 			pk0Arr: 600,
 			pk1Arr: 500,
 			pk2Arr: 0,
@@ -518,7 +519,7 @@ func TestProcessRegistryUpdates_StrictMinScoreEjection(t *testing.T) {
 	pk2[0] = 2
 
 	score.InitService(&score.MockService{
-		Scores: map[[48]byte]uint64{
+		Scores: map[[32]byte]uint64{
 			{0}: 600,
 			{1}: 500,
 			{2}: 0,

@@ -8,16 +8,18 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/sirupsen/logrus"
 
 	"github.com/ethereum/go-ethereum/common"
 )
 
 type ValidatorAIService struct {
 	ethClient *ethclient.Client
-	contract  *ScoreContractCaller
+	contract  *ScoreCaller
 
-	cache       map[uint64]map[[48]byte]uint64
+	cache       map[uint64]map[[32]byte]uint64
 	blockNumber uint64
 	mu          sync.RWMutex
 
@@ -51,7 +53,7 @@ func (s *ValidatorAIService) SetBlockRange(start, end uint64) {
 
 const maxBlocks = 100
 
-func (s *ValidatorAIService) GetEpochRangeScore() uint64 {
+func (s *ValidatorAIService) GetEpochRangeScore() (uint64, error) {
 	s.mu.RLock()
 	start := s.startBlock
 	end := s.endBlock
@@ -68,13 +70,13 @@ func (s *ValidatorAIService) GetEpochRangeScore() uint64 {
 	score, err := s.contract.GetEpochRangeScore(callOpts,
 		new(big.Int).SetUint64(start), new(big.Int).SetUint64(end))
 	if err != nil {
-		return 0
+		return 0, err
 	}
 
-	return score.Uint64()
+	return score.Uint64(), nil
 }
 
-func (s *ValidatorAIService) TargetValidatorsCount() uint64 {
+func (s *ValidatorAIService) TargetValidatorsCount() (uint64, error) {
 	s.mu.RLock()
 	block := s.blockNumber
 	s.mu.RUnlock()
@@ -88,19 +90,20 @@ func (s *ValidatorAIService) TargetValidatorsCount() uint64 {
 		Context:     ctx,
 	})
 	if err != nil {
-		return 0
+		return 0, err
 	}
 
-	return count.Uint64()
+	return count.Uint64(), nil
 }
 
-func (s *ValidatorAIService) GetScore(pubkey [48]byte) uint64 {
+func (s *ValidatorAIService) GetScore(pubkey [48]byte) (uint64, error) {
 	s.mu.RLock()
 	block := s.blockNumber
 	if blockCache, ok := s.cache[block]; ok {
-		if val, ok := blockCache[pubkey]; ok {
+		key := crypto.Keccak256Hash(pubkey[:])
+		if val, ok := blockCache[key]; ok {
 			s.mu.RUnlock()
-			return val
+			return val, nil
 		}
 	}
 	s.mu.RUnlock()
@@ -108,22 +111,26 @@ func (s *ValidatorAIService) GetScore(pubkey [48]byte) uint64 {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	logrus.Infof("Pubkey %s not in cache for block %d, querying contract", common.Bytes2Hex(pubkey[:]), block)
+	logrus.Infof("Hash: %s", crypto.Keccak256Hash(pubkey[:]).Hex())
+	key := crypto.Keccak256Hash(pubkey[:])
 	scoreBig, err := s.contract.GetScore(&bind.CallOpts{
-		Pending:     false,
-		BlockNumber: new(big.Int).SetUint64(block),
+		Pending: false,
+		//BlockNumber: new(big.Int).SetUint64(block),
+		BlockNumber: nil,
 		Context:     ctx,
-	}, pubkey[:])
+	}, key)
 	if err != nil {
-		return 0
+		return 0, err
 	}
 
 	score := scoreBig.Uint64()
 
 	s.mu.Lock()
 	if _, ok := s.cache[block]; !ok {
-		s.cache[block] = make(map[[48]byte]uint64)
+		s.cache[block] = make(map[[32]byte]uint64)
 	}
-	s.cache[block][pubkey] = score
+	s.cache[block][key] = score
 
 	if len(s.cache) > maxBlocks {
 		var oldest uint64 = math.MaxUint64
@@ -136,7 +143,25 @@ func (s *ValidatorAIService) GetScore(pubkey [48]byte) uint64 {
 	}
 	s.mu.Unlock()
 
-	return score
+	return score, nil
+}
+
+func (s *ValidatorAIService) IsValidatorRegistered(pubkey [48]byte) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	key := crypto.Keccak256Hash(pubkey[:])
+
+	res, err := s.contract.IsValidatorRegistered(&bind.CallOpts{
+		Pending:     false,
+		BlockNumber: new(big.Int).SetUint64(s.blockNumber),
+		Context:     ctx,
+	}, key)
+	if err != nil {
+		return false, err
+	}
+
+	return res, nil
 }
 
 func NewAIService(rpcURL string, contractAddr string) (*ValidatorAIService, error) {
@@ -145,7 +170,7 @@ func NewAIService(rpcURL string, contractAddr string) (*ValidatorAIService, erro
 		return nil, err
 	}
 
-	contract, err := NewScoreContractCaller(common.HexToAddress(contractAddr), client)
+	contract, err := NewScoreCaller(common.HexToAddress(contractAddr), client)
 	if err != nil {
 		return nil, err
 	}
@@ -153,6 +178,6 @@ func NewAIService(rpcURL string, contractAddr string) (*ValidatorAIService, erro
 	return &ValidatorAIService{
 		ethClient: client,
 		contract:  contract,
-		cache:     make(map[uint64]map[[48]byte]uint64),
+		cache:     make(map[uint64]map[[32]byte]uint64),
 	}, nil
 }

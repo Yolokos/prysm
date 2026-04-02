@@ -19,6 +19,7 @@ import (
 	"github.com/OffchainLabs/prysm/v7/runtime/version"
 	"github.com/OffchainLabs/prysm/v7/testing/assert"
 	"github.com/OffchainLabs/prysm/v7/testing/require"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 func TestIsActiveValidator_OK(t *testing.T) {
@@ -269,7 +270,7 @@ func TestBeaconProposerIndex_BadState(t *testing.T) {
 
 func TestComputeProposerIndex_Compatibility(t *testing.T) {
 	score.InitService(&score.MockService{
-		Scores: map[[48]byte]uint64{},
+		Scores: map[[32]byte]uint64{},
 	})
 	helpers.ClearCache()
 
@@ -591,9 +592,9 @@ func TestComputeProposerIndex_ScoreAffectsSelection(t *testing.T) {
 	pk1Arr[0] = 2
 
 	score.InitService(&score.MockService{
-		Scores: map[[48]byte]uint64{
-			pk0Arr: 400,
-			pk1Arr: 120,
+		Scores: map[[32]byte]uint64{
+			crypto.Keccak256Hash(pk0Arr[:]): 400,
+			crypto.Keccak256Hash(pk1Arr[:]): 120,
 		},
 	})
 

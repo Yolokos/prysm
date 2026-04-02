@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.18;
 
 contract ScoreContract {
     struct ScoreData {
@@ -13,13 +13,15 @@ contract ScoreContract {
     }
 
     uint256 public targetValidatorsCount;
-    mapping(bytes => ScoreData) public scores;
+    uint256 public validatorsCount;
+    mapping(bytes32 => ScoreData) public scores;
     mapping(uint256 => BlockAggregate) public blockAggregates;
+    mapping(bytes32 => bool) public isRegistered;
 
     address public constant SYSTEM = address(0);
 
-    event ValidatorRegistered(bytes pubKey);
-    event ScoreUpdated(bytes pubKey, uint256 score, uint256 blockNumber);
+    event ValidatorRegistered(bytes32 pubKey);
+    event ScoreUpdated(bytes32 pubKey, uint256 score, uint256 blockNumber);
 
     modifier onlySystem() {
         require(msg.sender == SYSTEM, "Only system can call");
@@ -30,15 +32,15 @@ contract ScoreContract {
         targetValidatorsCount = _count;
     }
 
-    function RegisterValidator(bytes calldata pubKey) external onlySystem {
-        require(scores[pubKey].score == 0, "Validator already registered");
+    function RegisterValidator(bytes32 pubKey) external onlySystem {
+        require(!isRegistered[pubKey], "Already registered");
 
-        scores[pubKey] = ScoreData({score: 1, lastUpdatedBlock: block.number});
+        isRegistered[pubKey] = true;
 
-        emit ValidatorRegistered(pubKey);
+        scores[pubKey] = ScoreData({score: 400, lastUpdatedBlock: block.number});
     }
 
-    function UpdateScore(bytes calldata pubKey, uint256 score) external {
+    function UpdateScore(bytes32 pubKey, uint256 score) external {
         ScoreData storage data = scores[pubKey];
 
         uint256 prevScore = data.score;
@@ -82,20 +84,21 @@ contract ScoreContract {
         return totalScore / totalCount;
     }
 
-    function GetScore(bytes calldata pubKey) external view returns (uint256) {
+    function GetScore(bytes32 pubKey) external view returns (uint256) {
+        require(isRegistered[pubKey], "Validator not registered");
         return scores[pubKey].score;
     }
 
     function GetScoreData(
-        bytes calldata pubKey
+        bytes32 pubKey
     ) external view returns (uint256 score, uint256 lastUpdatedBlock) {
         ScoreData memory data = scores[pubKey];
         return (data.score, data.lastUpdatedBlock);
     }
 
     function IsValidatorRegistered(
-        bytes calldata pubKey
+        bytes32 pubKey
     ) external view returns (bool) {
-        return scores[pubKey].score != 0;
+        return isRegistered[pubKey];
     }
 }

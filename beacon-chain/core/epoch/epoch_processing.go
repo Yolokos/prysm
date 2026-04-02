@@ -22,6 +22,7 @@ import (
 	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
 	"github.com/OffchainLabs/prysm/v7/runtime/version"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 )
 
 type candidate struct {
@@ -67,15 +68,25 @@ func ProcessRegistryUpdates(ctx context.Context, st state.BeaconState) (state.Be
 		return st, errors.Wrap(err, "could not get score service")
 	}
 
-	epochScore := scoreService.GetEpochRangeScore()
+	epochScore, err := scoreService.GetEpochRangeScore()
+	if err != nil {
+		return st, errors.Wrap(err, "could not get epoch range score")
+	}
+	log.Infof("Epoch range score is %d", epochScore)
+	count := 0
 
 	eligibleForActivationQ := make([]primitives.ValidatorIndex, 0)
 	eligibleForActivation := make([]primitives.ValidatorIndex, 0)
 	eligibleForEjection := make([]primitives.ValidatorIndex, 0)
 
 	if err := st.ReadFromEveryValidator(func(idx int, val state.ReadOnlyValidator) error {
+		count++
 		index := primitives.ValidatorIndex(idx)
-		scoreValue := scoreService.GetScore(val.PublicKey())
+		scoreValue, err := scoreService.GetScore(val.PublicKey())
+		if err != nil {
+			return errors.Wrapf(err, "could not get score for validator %d", index)
+		}
+		log.Infof("Validator %d has score %d", index, scoreValue)
 
 		if helpers.IsEligibleForActivationQueue(val, currentEpoch) {
 			eligibleForActivationQ = append(eligibleForActivationQ, index)
@@ -101,6 +112,8 @@ func ProcessRegistryUpdates(ctx context.Context, st state.BeaconState) (state.Be
 		return st, fmt.Errorf("failed to read validators: %w", err)
 	}
 
+	log.Infof("TOTAL VALIDATORS: %d", count)
+
 	activationEligibilityEpoch := currentEpoch + 1
 	for _, idx := range eligibleForActivationQ {
 		v, err := st.ValidatorAtIndex(idx)
@@ -120,6 +133,7 @@ func ProcessRegistryUpdates(ctx context.Context, st state.BeaconState) (state.Be
 			if err != nil && !errors.Is(err, validators.ErrValidatorAlreadyExited) {
 				return nil, errors.Wrapf(err, "could not initiate exit for validator %d", idx)
 			}
+			log.Infof("Validator %d initiated exit", idx)
 		}
 	}
 
@@ -131,8 +145,16 @@ func ProcessRegistryUpdates(ctx context.Context, st state.BeaconState) (state.Be
 		copy(pki[:], vi.PublicKey)
 		copy(pkj[:], vj.PublicKey)
 
-		si := scoreService.GetScore(pki)
-		sj := scoreService.GetScore(pkj)
+		si, err := scoreService.GetScore(pki)
+		if err != nil {
+			log.WithError(err).Error("Could not get score for validator, skipping")
+			return false
+		}
+		sj, err := scoreService.GetScore(pkj)
+		if err != nil {
+			log.WithError(err).Error("Could not get score for validator, skipping")
+			return false
+		}
 
 		pi := si >= epochScore
 		pj := sj >= epochScore
@@ -144,6 +166,9 @@ func ProcessRegistryUpdates(ctx context.Context, st state.BeaconState) (state.Be
 		wi := vi.EffectiveBalance * (1000 + si)
 		wj := vj.EffectiveBalance * (1000 + sj)
 
+		log.Infof("Validator %d has weight %d", eligibleForActivation[i], wi)
+		log.Infof("Validator %d has weight %d", eligibleForActivation[j], wj)
+
 		return wi > wj
 	})
 
@@ -154,10 +179,17 @@ func ProcessRegistryUpdates(ctx context.Context, st state.BeaconState) (state.Be
 	// 	return nil, err
 	// }
 
-	churnLimit := scoreService.TargetValidatorsCount()
+	churnLimit, err := scoreService.TargetValidatorsCount()
+	if err != nil {
+		return nil, errors.Wrap(err, "could not get target validators count")
+	}
+	log.Infof("Churn limit is %d", churnLimit)
 
 	if st.Version() >= version.Deneb {
-		churnLimit = scoreService.TargetValidatorsCount()
+		churnLimit, err = scoreService.TargetValidatorsCount()
+		if err != nil {
+			return nil, errors.Wrap(err, "could not get target validators count")
+		}
 	}
 
 	if churnLimit < limit {
@@ -173,6 +205,7 @@ func ProcessRegistryUpdates(ctx context.Context, st state.BeaconState) (state.Be
 		}
 
 		v.ActivationEpoch = activationExitEpoch
+		log.Infof("Validator %d activation epoch set to %d", index, activationExitEpoch)
 
 		if err := st.UpdateValidatorAtIndex(index, v); err != nil {
 			return nil, err

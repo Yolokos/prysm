@@ -703,9 +703,10 @@ func (b *BeaconNode) registerAttestationPool() error {
 }
 
 func (b *BeaconNode) registerScoreService(cliCtx *cli.Context) error {
-	rpcURL := cliCtx.String(flags.ExecutionEngineEndpoint.Name)
-	contractAddr := cliCtx.String(flags.ScoreContractFlag.Name)
-
+	rpcURL := flags.ExecutionRpcEndpoint.Value
+	contractAddr := params.BeaconConfig().ScoreContractAddress
+	depositAddr := params.BeaconConfig().DepositContractAddress
+	logrus.Infof("RPC Url: %s, Contract Address: %s, Deposit Address: %s", rpcURL, contractAddr, depositAddr)
 	scoreService, err := score.NewAIService(
 		rpcURL,
 		contractAddr,

@@ -76,6 +76,12 @@ var (
 		Usage: "An execution client http endpoint. Can contain auth header as well in the format",
 		Value: "http://localhost:8551",
 	}
+	// ExecutionRpcEndpoint provides an HTTP access endpoint to connect to an execution client on the execution layer
+	ExecutionRpcEndpoint = &cli.StringFlag{
+		Name:  "execution-rpc-endpoint",
+		Usage: "An execution client http endpoint. Can contain auth header as well in the format",
+		Value: "http://localhost:8545",
+	}
 	// ExecutionEngineHeaders defines a list of HTTP headers to send with all execution client requests.
 	ExecutionEngineHeaders = &cli.StringFlag{
 		Name: "execution-headers",

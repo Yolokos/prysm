@@ -3,12 +3,13 @@ package score
 import "errors"
 
 type Service interface {
-	GetScore(pubkey [48]byte) uint64
-	GetEpochRangeScore() uint64
-	TargetValidatorsCount() uint64
+	GetScore(pubkey [48]byte) (uint64, error)
+	GetEpochRangeScore() (uint64, error)
+	TargetValidatorsCount() (uint64, error)
 
 	SetBlockNumber(block uint64)
 	SetBlockRange(start, end uint64)
+	IsValidatorRegistered(pubkey [48]byte) (bool, error)
 }
 
 var svc Service
