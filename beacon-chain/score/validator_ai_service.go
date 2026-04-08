@@ -10,7 +10,6 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/sirupsen/logrus"
 
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -111,8 +110,6 @@ func (s *ValidatorAIService) GetScore(pubkey [48]byte) (uint64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	logrus.Infof("Pubkey %s not in cache for block %d, querying contract", common.Bytes2Hex(pubkey[:]), block)
-	logrus.Infof("Hash: %s", crypto.Keccak256Hash(pubkey[:]).Hex())
 	key := crypto.Keccak256Hash(pubkey[:])
 	scoreBig, err := s.contract.GetScore(&bind.CallOpts{
 		Pending: false,

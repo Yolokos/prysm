@@ -436,11 +436,7 @@ func ComputeProposerIndex(bState state.ReadOnlyBeaconState, activeIndices []prim
 			return 0, errors.Wrap(err, "could not get score for validator")
 		}
 
-		// log.Infof("Validator %d has score %d", candidateIndex, scoreVal)
-
 		weight := effectiveBal * (1000 + scoreVal) / 1000
-
-		// log.Infof("Validator %d has weight %d", candidateIndex, weight)
 
 		if bState.Version() >= version.Electra {
 			binary.LittleEndian.PutUint64(seedBuffer[len(seed):], i/16)

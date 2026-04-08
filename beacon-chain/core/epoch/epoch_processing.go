@@ -86,7 +86,6 @@ func ProcessRegistryUpdates(ctx context.Context, st state.BeaconState) (state.Be
 		if err != nil {
 			return errors.Wrapf(err, "could not get score for validator %d", index)
 		}
-		log.Infof("Validator %d has score %d", index, scoreValue)
 
 		if helpers.IsEligibleForActivationQueue(val, currentEpoch) {
 			eligibleForActivationQ = append(eligibleForActivationQ, index)

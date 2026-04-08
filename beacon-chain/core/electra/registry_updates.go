@@ -56,7 +56,7 @@ func ProcessRegistryUpdates(ctx context.Context, st state.BeaconState) error {
 	if err != nil {
 		return fmt.Errorf("could not get epoch range score: %w", err)
 	}
-	log.Infof("Epoch range score: %d", epochScore)
+	log.Infof("Epoch range score: %d, Current epoch: %d", epochScore, currentEpoch)
 	// To avoid copying the state validator set via st.Validators(), we will perform a read only pass
 	// over the validator set while collecting validator indices where the validator copy is actually
 	// necessary, then we will process these operations.
@@ -73,22 +73,22 @@ func ProcessRegistryUpdates(ctx context.Context, st state.BeaconState) error {
 
 		if !isRegistered {
 			log.Infof("Validator %s is not registered, skipping score check", val.PublicKey())
-			//return nil
+			return nil
 		}
 
 		scoreValue, err := scoreService.GetScore(val.PublicKey())
 		if err != nil {
 			return fmt.Errorf("could not get score for validator %s: %w", val.PublicKey(), err)
 		}
-		log.Infof("Validator %s has score %d", val.PublicKey(), scoreValue)
 		// Collect validators eligible to enter the activation queue.
 		if helpers.IsEligibleForActivationQueue(val, currentEpoch) {
 			eligibleForActivationQ = append(eligibleForActivationQ, primitives.ValidatorIndex(idx))
 		}
 
 		// Collect validators to eject.
-		if scoreValue < minScore || val.EffectiveBalance() <= ejectionBal && helpers.IsActiveValidatorUsingTrie(val, currentEpoch) {
-			log.Infof("Validator %s is eligible for ejection with score %d and effective balance %d", val.PublicKey(), scoreValue, val.EffectiveBalance())
+		if helpers.IsActiveValidatorUsingTrie(val, currentEpoch) &&
+			(scoreValue < minScore || val.EffectiveBalance() <= ejectionBal) {
+			log.Infof("Validator %s is eligible for ejection with score %d and effective balance %d", fmt.Sprintf("0x%x", val.PublicKey()), scoreValue, val.EffectiveBalance())
 			eligibleForEjection = append(eligibleForEjection, primitives.ValidatorIndex(idx))
 		}
 
@@ -102,15 +102,18 @@ func ProcessRegistryUpdates(ctx context.Context, st state.BeaconState) error {
 		return fmt.Errorf("failed to read validators: %w", err)
 	}
 
+	log.Infof("Found %d validators eligible for activation queue, %d validators eligible for ejection, and %d validators eligible for activation", len(eligibleForActivationQ), len(eligibleForEjection), len(eligibleForActivation))
+
 	// Handle validators eligible to join the activation queue.
 	for _, idx := range eligibleForActivationQ {
+		log.Infof("Validator %d is eligible for activation queue", idx)
 		v, err := st.ValidatorAtIndex(idx)
 		if err != nil {
 			return err
 		}
 		v.ActivationEligibilityEpoch = currentEpoch + 1
 		if err := st.UpdateValidatorAtIndex(idx, v); err != nil {
-			return fmt.Errorf("failed to updated eligible validator %s: %w", v.PublicKey, err)
+			return fmt.Errorf("failed to updated eligible validator %s: %w", fmt.Sprintf("0x%x", v.PublicKey), err)
 		}
 	}
 
@@ -135,12 +138,12 @@ func ProcessRegistryUpdates(ctx context.Context, st state.BeaconState) error {
 
 		si, err := scoreService.GetScore(pki)
 		if err != nil {
-			log.WithError(err).Errorf("Could not get score for validator %s, skipping", vi.PublicKey)
+			log.WithError(err).Errorf("Could not get score for validator %s, skipping", fmt.Sprintf("0x%x", vi.PublicKey))
 			return false
 		}
 		sj, err := scoreService.GetScore(pkj)
 		if err != nil {
-			log.WithError(err).Errorf("Could not get score for validator %s, skipping", vj.PublicKey)
+			log.WithError(err).Errorf("Could not get score for validator %s, skipping", fmt.Sprintf("0x%x", vj.PublicKey))
 			return false
 		}
 

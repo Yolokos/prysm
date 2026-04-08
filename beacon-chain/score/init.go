@@ -1,6 +1,11 @@
 package score
 
-import "errors"
+import (
+	"errors"
+	"strings"
+
+	"github.com/ethereum/go-ethereum/accounts/abi"
+)
 
 type Service interface {
 	GetScore(pubkey [48]byte) (uint64, error)
@@ -16,6 +21,15 @@ var svc Service
 
 func InitService(s Service) {
 	svc = s
+}
+
+func GetABI() (abi.ABI, error) {
+	var err error
+	parsedABI, err := abi.JSON(strings.NewReader(ScoreMetaData.ABI))
+	if err != nil {
+		return abi.ABI{}, err
+	}
+	return parsedABI, nil
 }
 
 func GetService() (Service, error) {
