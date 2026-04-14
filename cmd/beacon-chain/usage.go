@@ -160,10 +160,10 @@ var appHelpFlagGroups = []flagGroup{
 		Flags: []cli.Flag{
 			flags.ContractDeploymentBlock,
 			flags.DepositContractFlag,
-			flags.ScoreContractFlag,
 			flags.EngineEndpointTimeoutSeconds,
 			flags.Eth1HeaderReqLimit,
 			flags.ExecutionEngineEndpoint,
+			flags.ExecutionRpcEndpoint,
 			flags.ExecutionEngineHeaders,
 			flags.ExecutionJWTSecretFlag,
 			flags.JwtId,

@@ -111,12 +111,6 @@ var (
 		Usage: "Deposit contract address. Beacon chain node will listen logs coming from the deposit contract to determine when validator is eligible to participate.",
 		Value: params.BeaconConfig().DepositContractAddress,
 	}
-	// ScoreContractFlag defines a flag for the score contract address.
-	ScoreContractFlag = &cli.StringFlag{
-		Name:  "score-contract",
-		Usage: "Score contract address. Beacon chain node will listen logs coming from the score contract to determine when validator is eligible to participate.",
-		Value: params.BeaconConfig().ScoreContractAddress,
-	}
 	// RPCHost defines the host on which the RPC server should listen.
 	RPCHost = &cli.StringFlag{
 		Name:  "rpc-host",

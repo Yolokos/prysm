@@ -130,6 +130,7 @@ type BeaconNode struct {
 	slasherEnabled           bool
 	lcStore                  *lightclient.Store
 	ConfigOptions            []params.Option
+	rpcClient                string
 }
 
 // New creates a new node instance, sets up configuration options, and registers
@@ -703,7 +704,11 @@ func (b *BeaconNode) registerAttestationPool() error {
 }
 
 func (b *BeaconNode) registerScoreService(cliCtx *cli.Context) error {
-	rpcURL := flags.ExecutionRpcEndpoint.Value
+	rpcURL := cliCtx.String(flags.ExecutionRpcEndpoint.Name)
+	if rpcURL == "" {
+		return errors.New("execution rpc endpoint is not set")
+	}
+
 	contractAddr := params.BeaconConfig().ScoreContractAddress
 	depositAddr := params.BeaconConfig().DepositContractAddress
 	logrus.Infof("RPC Url: %s, Contract Address: %s, Deposit Address: %s", rpcURL, contractAddr, depositAddr)
