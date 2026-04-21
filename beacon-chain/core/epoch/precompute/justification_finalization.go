@@ -9,6 +9,7 @@ import (
 	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
 	"github.com/OffchainLabs/prysm/v7/time/slots"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 var errNilState = errors.New("nil state")
@@ -55,6 +56,13 @@ func UnrealizedCheckpoints(st state.BeaconState) (*ethpb.Checkpoint, *ethpb.Chec
 //	  current_target_balance = get_attesting_balance(state, current_attestations)
 //	  weigh_justification_and_finalization(state, total_active_balance, previous_target_balance, current_target_balance)
 func ProcessJustificationAndFinalizationPreCompute(state state.BeaconState, pBal *Balance) (state.BeaconState, error) {
+	logrus.WithFields(logrus.Fields{
+		"slot":                       state.Slot(),
+		"prev_epoch_target_attested": pBal.PrevEpochTargetAttested,
+		"curr_epoch_target_attested": pBal.CurrentEpochTargetAttested,
+		"active_balance":             pBal.ActiveCurrentEpoch,
+	}).Info("JUSTIFICATION INPUT")
+
 	canProcessSlot, err := slots.EpochStart(2 /*epoch*/)
 	if err != nil {
 		return nil, err
@@ -70,6 +78,9 @@ func ProcessJustificationAndFinalizationPreCompute(state state.BeaconState, pBal
 
 // processJustificationBits processes the justification bits during epoch processing.
 func processJustificationBits(state state.BeaconState, totalActiveBalance, prevEpochTargetBalance, currEpochTargetBalance uint64) bitfield.Bitvector4 {
+	logrus.WithFields(logrus.Fields{
+		"old_bits": state.JustificationBits(),
+	}).Info("OLD JUSTIFICATION BITS")
 	newBits := state.JustificationBits()
 	newBits.Shift(1)
 	// If 2/3 or more of total balance attested in the previous epoch.
@@ -80,13 +91,22 @@ func processJustificationBits(state state.BeaconState, totalActiveBalance, prevE
 	if 3*currEpochTargetBalance >= 2*totalActiveBalance {
 		newBits.SetBitAt(0, true)
 	}
-
+	logrus.WithFields(logrus.Fields{
+		"new_bits": newBits,
+	}).Info("NEW JUSTIFICATION BITS")
 	return newBits
 }
 
 // weighJustificationAndFinalization processes justification and finalization during
 // epoch processing. This is where a beacon node can justify and finalize a new epoch.
 func weighJustificationAndFinalization(state state.BeaconState, newBits bitfield.Bitvector4) (state.BeaconState, error) {
+	logrus.WithFields(logrus.Fields{
+		"prev_justified":     state.PreviousJustifiedCheckpoint().Epoch,
+		"curr_justified":     state.CurrentJustifiedCheckpoint().Epoch,
+		"finalized":          state.FinalizedCheckpoint().Epoch,
+		"justification_bits": state.JustificationBits(),
+	}).Info("BEFORE FINALIZATION")
+
 	jc, fc, err := computeCheckpoints(state, newBits)
 	if err != nil {
 		return nil, err
@@ -107,6 +127,13 @@ func weighJustificationAndFinalization(state state.BeaconState, newBits bitfield
 	if err := state.SetFinalizedCheckpoint(fc); err != nil {
 		return nil, err
 	}
+
+	logrus.WithFields(logrus.Fields{
+		"new_prev_justified": state.PreviousJustifiedCheckpoint().Epoch,
+		"new_curr_justified": state.CurrentJustifiedCheckpoint().Epoch,
+		"new_finalized":      state.FinalizedCheckpoint().Epoch,
+	}).Info("AFTER FINALIZATION")
+
 	return state, nil
 }
 

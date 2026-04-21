@@ -66,11 +66,13 @@ func ProcessRegistryUpdates(ctx context.Context, st state.BeaconState) error {
 
 	if err := st.ReadFromEveryValidator(func(idx int, val state.ReadOnlyValidator) error {
 		// Score check to ensure we don't perform unnecessary state updates for validators that are not eligible for activation or ejection.
+		log.Infof("Checking validator %d with pubkey %s for registry updates", idx, fmt.Sprintf("0x%x", val.PublicKey()))
 		isRegistered, err := scoreService.IsValidatorRegistered(val.PublicKey())
 		if err != nil {
 			return fmt.Errorf("could not check if validator %s is registered: %w", val.PublicKey(), err)
 		}
 
+		log.Infof("Validator %d registration status: %t", idx, isRegistered)
 		if !isRegistered {
 			log.Infof("Validator %s is not registered, skipping score check", val.PublicKey())
 			return nil

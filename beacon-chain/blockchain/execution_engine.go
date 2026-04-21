@@ -7,6 +7,7 @@ import (
 	"github.com/OffchainLabs/prysm/v7/async/event"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/cache"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/blocks"
+	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/electra"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/feed"
 	statefeed "github.com/OffchainLabs/prysm/v7/beacon-chain/core/feed/state"
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/core/helpers"
@@ -368,13 +369,21 @@ func (s *Service) getPayloadAttribute(ctx context.Context, st state.BeaconState,
 			return emptyAttri
 		}
 
-		attr, err := payloadattribute.New(&enginev1.PayloadAttributesV3{
+		payloadAttributesV3 := &enginev1.PayloadAttributesV3{
 			Timestamp:             uint64(t.Unix()),
 			PrevRandao:            prevRando,
 			SuggestedFeeRecipient: val.FeeRecipient[:],
 			Withdrawals:           withdrawals,
 			ParentBeaconBlockRoot: headRoot,
-		})
+		}
+
+		if v >= version.Electra {
+			log.Infof("Adding pending validator registrations to payload attributes")
+			payloadAttributesV3.ValidatorRegistrations = electra.GetPendingValidatorRegistrations(st)
+			log.Infof("Got %d pending validator registrations for payload attributes", len(payloadAttributesV3.ValidatorRegistrations))
+		}
+
+		attr, err := payloadattribute.New(payloadAttributesV3)
 		if err != nil {
 			log.WithError(err).Error("Could not get payload attribute")
 			return emptyAttri

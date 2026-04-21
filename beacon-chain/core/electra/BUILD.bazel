@@ -13,6 +13,7 @@ go_library(
         "transition.go",
         "transition_no_verify_sig.go",
         "upgrade.go",
+        "validator_registrations.go",
         "validator.go",
         "withdrawals.go",
     ],

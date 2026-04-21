@@ -294,17 +294,21 @@ func ProcessPendingDeposits(ctx context.Context, st state.BeaconState, activeBal
 	if err != nil {
 		return err
 	}
+	log.Infof("PENDING DEPOSITS: total=%d, finalized_slot=%d, eth1_deposit_index=%d, deposit_requests_start_index=%d", len(pendingDeposits), finalizedSlot, st.Eth1DepositIndex(), startIndex)
 	for _, pendingDeposit := range pendingDeposits {
+		log.Infof("Pending deposit: pubkey=%#x, amount=%d, slot=%d", bytesutil.Trunc(pendingDeposit.PublicKey), pendingDeposit.Amount, pendingDeposit.Slot)
 		// Do not process pendingDeposit requests if Eth1 bridge deposits are not yet applied.
 		if pendingDeposit.Slot > params.BeaconConfig().GenesisSlot && st.Eth1DepositIndex() < startIndex {
 			break
 		}
 
+		log.Infof("Processing pending deposit: pubkey=%#x, amount=%d, slot=%d, finalized_slot=%d", bytesutil.Trunc(pendingDeposit.PublicKey), pendingDeposit.Amount, pendingDeposit.Slot, finalizedSlot)
 		// Check if pendingDeposit has been finalized, otherwise, stop processing.
 		if pendingDeposit.Slot > finalizedSlot {
 			break
 		}
 
+		log.Infof("Next deposit index: pubkey=%#x, amount=%d, slot=%d, next_deposit_index=%d, max_pending_deposits_per_epoch=%d", bytesutil.Trunc(pendingDeposit.PublicKey), pendingDeposit.Amount, pendingDeposit.Slot, nextDepositIndex, params.BeaconConfig().MaxPendingDepositsPerEpoch)
 		// Check if number of processed deposits has not reached the limit, otherwise, stop processing.
 		if nextDepositIndex >= params.BeaconConfig().MaxPendingDepositsPerEpoch {
 			break
@@ -324,10 +328,12 @@ func ProcessPendingDeposits(ctx context.Context, st state.BeaconState, activeBal
 
 		if isValidatorWithdrawn {
 			// note: the validator will never be active, just increase the balance
+			log.Infof("Validator withdrawn: pubkey=%#x, amount=%d, slot=%d", bytesutil.Trunc(pendingDeposit.PublicKey), pendingDeposit.Amount, pendingDeposit.Slot)
 			if err := helpers.IncreaseBalance(st, index, pendingDeposit.Amount); err != nil {
 				return errors.Wrap(err, "could not increase balance")
 			}
 		} else if isValidatorExited {
+			log.Infof("Validator exited: pubkey=%#x, amount=%d, slot=%d", bytesutil.Trunc(pendingDeposit.PublicKey), pendingDeposit.Amount, pendingDeposit.Slot)
 			pendingDepositsToPostpone = append(pendingDepositsToPostpone, pendingDeposit)
 		} else {
 			isChurnLimitReached = primitives.Gwei(processedAmount+pendingDeposit.Amount) > availableForProcessing
@@ -346,7 +352,7 @@ func ProcessPendingDeposits(ctx context.Context, st state.BeaconState, activeBal
 				pendingDepositsToBatchVerify = append(pendingDepositsToBatchVerify, pendingDeposit)
 			}
 		}
-
+		log.Infof("Pending deposit processed: pubkey=%#x, amount=%d, slot=%d", bytesutil.Trunc(pendingDeposit.PublicKey), pendingDeposit.Amount, pendingDeposit.Slot)
 		// Regardless of how the pendingDeposit was handled, we move on in the queue.
 		nextDepositIndex++
 	}
@@ -375,15 +381,25 @@ func ProcessPendingDeposits(ctx context.Context, st state.BeaconState, activeBal
 // batchProcessNewPendingDeposits should only be used to process new deposits that require validator registration
 func batchProcessNewPendingDeposits(ctx context.Context, state state.BeaconState, pendingDeposits []*ethpb.PendingDeposit) error {
 	if len(pendingDeposits) == 0 {
+		log.Infof("BATCH: no pending deposits to process")
 		return nil
 	}
+
+	log.Infof("BATCH: start processing %d pending deposits", len(pendingDeposits))
+	log.Infof("BATCH: validators BEFORE = %d", len(state.Validators()))
 
 	allSignaturesVerified, err := blocks.BatchVerifyPendingDepositsSignatures(ctx, pendingDeposits)
 	if err != nil {
 		return errors.Wrap(err, "batch signature verification failed")
 	}
 
-	for _, pd := range pendingDeposits {
+	log.Infof("BATCH: batch signature verification result = %v", allSignaturesVerified)
+
+	for i, pd := range pendingDeposits {
+		log.Infof("BATCH: deposit #%d pubkey=%#x amount=%d", i, bytesutil.Trunc(pd.PublicKey), pd.Amount)
+		log.Infof("DEPOSIT DEBUG: pubkey=%#x", bytesutil.Trunc(pd.PublicKey))
+		log.Infof("DEPOSIT DEBUG: withdrawal_credentials=%#x", bytesutil.Trunc(pd.WithdrawalCredentials))
+		log.Infof("DEPOSIT DEBUG: signature=%#x", bytesutil.Trunc(pd.Signature))
 		validSig := allSignaturesVerified
 
 		if !allSignaturesVerified {
@@ -396,20 +412,30 @@ func batchProcessNewPendingDeposits(ctx context.Context, state state.BeaconState
 			if err != nil {
 				return errors.Wrap(err, "individual deposit signature verification failed")
 			}
+			log.Infof("BATCH: individual signature valid = %v", validSig)
 		}
 
 		pubkey := bytesutil.ToBytes48(pd.PublicKey)
 		if index, exists := state.ValidatorIndexByPubkey(pubkey); exists {
+			log.Infof("BATCH: validator already exists index=%d → increasing balance", index)
 			if err := helpers.IncreaseBalance(state, index, pd.Amount); err != nil {
 				return errors.Wrap(err, "could not increase balance")
 			}
 		} else if validSig {
+			log.Infof("BATCH: validator NOT found in state")
 			if err := AddValidatorToRegistry(state, pd.PublicKey, pd.WithdrawalCredentials, pd.Amount); err != nil {
+				log.Infof("BATCH: signature valid → ADDING validator pubkey=%#x", bytesutil.Trunc(pd.PublicKey))
+
 				return errors.Wrap(err, "failed to add validator to registry")
 			}
+
+			log.Infof("BATCH: SUCCESSFULLY added validator pubkey=%#x", bytesutil.Trunc(pd.PublicKey))
+		} else {
+			log.Warnf("BATCH: signature INVALID → skipping pubkey=%#x", bytesutil.Trunc(pd.PublicKey))
 		}
 	}
 
+	log.Infof("BATCH: validators AFTER = %d", len(state.Validators()))
 	return nil
 }
 

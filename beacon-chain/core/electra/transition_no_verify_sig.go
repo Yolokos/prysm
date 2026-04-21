@@ -9,6 +9,7 @@ import (
 	"github.com/OffchainLabs/prysm/v7/beacon-chain/state"
 	"github.com/OffchainLabs/prysm/v7/consensus-types/interfaces"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -96,6 +97,7 @@ func ProcessOperations(ctx context.Context, st state.BeaconState, block interfac
 			return nil, errors.New("nil deposit request")
 		}
 	}
+	logrus.Infof("Electra Processing %d deposit requests", len(requests.Deposits))
 	st, err = ProcessDepositRequests(ctx, st, requests.Deposits)
 	if err != nil {
 		return nil, execReqErr{errors.Wrap(err, "could not process deposit requests")}

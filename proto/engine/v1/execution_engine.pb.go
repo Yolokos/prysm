@@ -1394,6 +1394,8 @@ type PayloadAttributesV3 struct {
 	ParentBeaconBlockRoot []byte                 `protobuf:"bytes,5,opt,name=parent_beacon_block_root,json=parentBeaconBlockRoot,proto3" json:"parent_beacon_block_root,omitempty" ssz-size:"32"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
+
+	ValidatorRegistrations [][]byte
 }
 
 func (x *PayloadAttributesV3) Reset() {

@@ -13,6 +13,7 @@ import (
 	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
 	"github.com/OffchainLabs/prysm/v7/monitoring/tracing/trace"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 // Re-exports for methods that haven't changed in Electra.
@@ -66,6 +67,14 @@ func ProcessEpoch(ctx context.Context, state state.BeaconState) error {
 	if err != nil {
 		return err
 	}
+
+	logrus.WithFields(logrus.Fields{
+		"slot":                     state.Slot(),
+		"current_justified_epoch":  state.CurrentJustifiedCheckpoint().Epoch,
+		"previous_justified_epoch": state.PreviousJustifiedCheckpoint().Epoch,
+		"finalized_epoch":          state.FinalizedCheckpoint().Epoch,
+	}).Info("EPOCH BEFORE PROCESS")
+
 	state, err = precompute.ProcessJustificationAndFinalizationPreCompute(state, bp)
 	if err != nil {
 		return errors.Wrap(err, "could not process justification")
@@ -117,6 +126,16 @@ func ProcessEpoch(ctx context.Context, state state.BeaconState) error {
 	if err != nil {
 		return err
 	}
+
+	logrus.WithFields(logrus.Fields{
+		"state_bits_after": state.JustificationBits(),
+	}).Info("STATE JUSTIFICATION BITS AFTER")
+
+	logrus.WithFields(logrus.Fields{
+		"current_justified_epoch":  state.CurrentJustifiedCheckpoint().Epoch,
+		"previous_justified_epoch": state.PreviousJustifiedCheckpoint().Epoch,
+		"finalized_epoch":          state.FinalizedCheckpoint().Epoch,
+	}).Info("EPOCH AFTER PROCESS")
 	return nil
 }
 
