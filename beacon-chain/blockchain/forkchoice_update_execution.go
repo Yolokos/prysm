@@ -82,6 +82,20 @@ func (s *Service) sendFCUWithAttributes(cfg *postBlockProcessConfig, fcuArgs *fc
 	if fcuArgs.attributes.IsEmpty() {
 		return
 	}
+
+	log.Info("SendFCUWithAttributes FCU CALL",
+		"has_attributes", fcuArgs.attributes != nil,
+	)
+
+	if fcuArgs.attributes != nil {
+		pb, err := fcuArgs.attributes.PbV3()
+		if err != nil {
+			log.WithError(err).Error("PbV3 failed")
+		} else {
+			log.Infof("sendFCUWithAttributes FCU SEND: validatorRegistrations = %d", len(pb.ValidatorRegistrations))
+		}
+	}
+
 	if _, err := s.notifyForkchoiceUpdate(cfg.ctx, fcuArgs); err != nil {
 		log.WithError(err).Error("Could not update forkchoice with payload attributes for proposal")
 	}
@@ -93,6 +107,20 @@ func (s *Service) forkchoiceUpdateWithExecution(ctx context.Context, args *fcuCo
 	defer span.End()
 	// Note: Use the service context here to avoid the parent context being ended during a forkchoice update.
 	ctx = trace.NewContext(s.ctx, span)
+
+	log.Info("ForkchoiceUpdateWithExecution FCU CALL",
+		"has_attributes", args.attributes != nil,
+	)
+
+	if args.attributes != nil {
+		pb, err := args.attributes.PbV3()
+		if err != nil {
+			log.WithError(err).Error("PbV3 failed")
+		} else {
+			log.Infof("forkchoiceUpdateWithExecution FCU SEND: validatorRegistrations = %d", len(pb.ValidatorRegistrations))
+		}
+	}
+
 	_, err := s.notifyForkchoiceUpdate(ctx, args)
 	if err != nil {
 		return errors.Wrap(err, "could not notify forkchoice update")

@@ -2,6 +2,7 @@ package execution
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	"github.com/OffchainLabs/prysm/v7/consensus-types/primitives"
 	"github.com/OffchainLabs/prysm/v7/encoding/bytesutil"
 	"github.com/OffchainLabs/prysm/v7/monitoring/tracing/trace"
+	enginev1 "github.com/OffchainLabs/prysm/v7/proto/engine/v1"
 	pb "github.com/OffchainLabs/prysm/v7/proto/engine/v1"
 	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
 	"github.com/OffchainLabs/prysm/v7/runtime/version"
@@ -30,6 +32,7 @@ import (
 	"github.com/holiman/uint256"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -110,6 +113,15 @@ type ForkchoiceUpdatedResponse struct {
 	Status          *pb.PayloadStatus  `json:"payloadStatus"`
 	PayloadId       *pb.PayloadIDBytes `json:"payloadId"`
 	ValidationError string             `json:"validationError"`
+}
+
+type PayloadAttributesV3Clean struct {
+	Timestamp              uint64
+	PrevRandao             []byte
+	SuggestedFeeRecipient  []byte
+	Withdrawals            []*enginev1.Withdrawal
+	ParentBeaconBlockRoot  []byte
+	ValidatorRegistrations []*enginev1.ValidatorRegistration
 }
 
 // Reconstructor defines a service responsible for reconstructing full beacon chain objects by utilizing the execution API and making requests through the execution client.
@@ -241,6 +253,25 @@ func (s *Service) ForkchoiceUpdated(
 		}
 	case version.Deneb, version.Electra, version.Fulu:
 		a, err := attrs.PbV3()
+
+		if a != nil {
+			log.Infof("PTR: %p", a.ValidatorRegistrations)
+			log.Infof("LEN: %d", len(a.ValidatorRegistrations))
+			clean := &PayloadAttributesV3Clean{
+				Timestamp:              a.Timestamp,
+				PrevRandao:             a.PrevRandao,
+				SuggestedFeeRecipient:  a.SuggestedFeeRecipient,
+				Withdrawals:            a.Withdrawals,
+				ParentBeaconBlockRoot:  a.ParentBeaconBlockRoot,
+				ValidatorRegistrations: a.ValidatorRegistrations,
+			}
+			cleanJson, _ := json.Marshal(clean)
+			log.Infof("clean RAW JSON: %s", string(cleanJson))
+		}
+		b, _ := json.Marshal(a)
+		log.Infof("ForkchoiceUpdated RAW JSON: %s", string(b))
+		proto, _ := protojson.Marshal(a)
+		log.Infof("PROTO JSON: %s", string(proto))
 		if err != nil {
 			return nil, nil, err
 		}

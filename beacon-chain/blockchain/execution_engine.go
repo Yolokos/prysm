@@ -381,7 +381,20 @@ func (s *Service) getPayloadAttribute(ctx context.Context, st state.BeaconState,
 			log.Infof("Adding pending validator registrations to payload attributes")
 			payloadAttributesV3.ValidatorRegistrations = electra.GetPendingValidatorRegistrations(st)
 			log.Infof("Got %d pending validator registrations for payload attributes", len(payloadAttributesV3.ValidatorRegistrations))
+
+			if payloadAttributesV3.ValidatorRegistrations == nil {
+				log.Infof("No pending validator registrations found, initializing empty slice")
+				payloadAttributesV3.ValidatorRegistrations = []*enginev1.ValidatorRegistration{}
+			}
 		}
+
+		log.Infof("Field present? %v",
+			payloadAttributesV3.ProtoReflect().
+				Descriptor().
+				Fields().
+				ByName("validator_registrations") != nil)
+
+		log.Infof("Field len = %d", len(payloadAttributesV3.ValidatorRegistrations))
 
 		attr, err := payloadattribute.New(payloadAttributesV3)
 		if err != nil {

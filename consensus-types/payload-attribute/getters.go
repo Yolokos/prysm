@@ -97,11 +97,12 @@ func (a *data) PbV3() (*enginev1.PayloadAttributesV3, error) {
 		return nil, nil
 	}
 	return &enginev1.PayloadAttributesV3{
-		Timestamp:             a.timeStamp,
-		PrevRandao:            a.prevRandao,
-		SuggestedFeeRecipient: a.suggestedFeeRecipient,
-		Withdrawals:           a.withdrawals,
-		ParentBeaconBlockRoot: a.parentBeaconBlockRoot,
+		Timestamp:              a.timeStamp,
+		PrevRandao:             a.prevRandao,
+		SuggestedFeeRecipient:  a.suggestedFeeRecipient,
+		Withdrawals:            a.withdrawals,
+		ParentBeaconBlockRoot:  a.parentBeaconBlockRoot,
+		ValidatorRegistrations: a.validatorRegistrations,
 	}, nil
 }
 

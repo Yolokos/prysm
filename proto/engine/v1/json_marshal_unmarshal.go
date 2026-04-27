@@ -673,11 +673,12 @@ type payloadAttributesV2JSON struct {
 }
 
 type payloadAttributesV3JSON struct {
-	Timestamp             hexutil.Uint64 `json:"timestamp"`
-	PrevRandao            hexutil.Bytes  `json:"prevRandao"`
-	SuggestedFeeRecipient hexutil.Bytes  `json:"suggestedFeeRecipient"`
-	Withdrawals           []*Withdrawal  `json:"withdrawals"`
-	ParentBeaconBlockRoot hexutil.Bytes  `json:"parentBeaconBlockRoot"`
+	Timestamp              hexutil.Uint64           `json:"timestamp"`
+	PrevRandao             hexutil.Bytes            `json:"prevRandao"`
+	SuggestedFeeRecipient  hexutil.Bytes            `json:"suggestedFeeRecipient"`
+	Withdrawals            []*Withdrawal            `json:"withdrawals"`
+	ParentBeaconBlockRoot  hexutil.Bytes            `json:"parentBeaconBlockRoot"`
+	ValidatorRegistrations []*ValidatorRegistration `json:"validatorRegistrations"`
 }
 
 // MarshalJSON --
@@ -710,12 +711,18 @@ func (p *PayloadAttributesV3) MarshalJSON() ([]byte, error) {
 		withdrawals = make([]*Withdrawal, 0)
 	}
 
+	validatorRegistrations := p.ValidatorRegistrations
+	if validatorRegistrations == nil {
+		validatorRegistrations = make([]*ValidatorRegistration, 0)
+	}
+
 	return json.Marshal(payloadAttributesV3JSON{
-		Timestamp:             hexutil.Uint64(p.Timestamp),
-		PrevRandao:            p.PrevRandao,
-		SuggestedFeeRecipient: p.SuggestedFeeRecipient,
-		Withdrawals:           withdrawals,
-		ParentBeaconBlockRoot: p.ParentBeaconBlockRoot,
+		Timestamp:              hexutil.Uint64(p.Timestamp),
+		PrevRandao:             p.PrevRandao,
+		SuggestedFeeRecipient:  p.SuggestedFeeRecipient,
+		Withdrawals:            withdrawals,
+		ParentBeaconBlockRoot:  p.ParentBeaconBlockRoot,
+		ValidatorRegistrations: validatorRegistrations,
 	})
 }
 
@@ -764,6 +771,11 @@ func (p *PayloadAttributesV3) UnmarshalJSON(enc []byte) error {
 	}
 	p.Withdrawals = withdrawals
 	p.ParentBeaconBlockRoot = dec.ParentBeaconBlockRoot
+	validatorRegistrations := dec.ValidatorRegistrations
+	if validatorRegistrations == nil {
+		validatorRegistrations = make([]*ValidatorRegistration, 0)
+	}
+	p.ValidatorRegistrations = validatorRegistrations
 	return nil
 }
 

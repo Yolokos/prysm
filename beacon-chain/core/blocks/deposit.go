@@ -84,15 +84,26 @@ func BatchVerifyPendingDepositsSignatures(ctx context.Context, deposits []*ethpb
 //	signing_root = compute_signing_root(deposit_message, domain)
 //	return bls.Verify(pubkey, signing_root, signature)
 func IsValidDepositSignature(data *ethpb.Deposit_Data) (bool, error) {
+	log.Infof("SIGCHECK: ===== START =====")
+
+	log.Infof("SIGCHECK: pubkey=%#x", bytesutil.Trunc(data.PublicKey))
+	log.Infof("SIGCHECK: withdrawal_credentials=%#x", bytesutil.Trunc(data.WithdrawalCredentials))
+	log.Infof("SIGCHECK: amount=%d", data.Amount)
+
 	domain, err := signing.ComputeDomain(params.BeaconConfig().DomainDeposit, nil, nil)
 	if err != nil {
 		return false, err
 	}
+
+	log.Infof("SIGCHECK: computed domain=%#x", domain)
+
 	if err := verifyDepositDataSigningRoot(data, domain); err != nil {
 		// Ignore this error as in the spec pseudo code.
 		log.WithError(err).Debug("Skipping deposit: could not verify deposit data signature")
 		return false, nil
 	}
+
+	log.Infof("SIGCHECK: signature verification SUCCESS")
 	return true, nil
 }
 

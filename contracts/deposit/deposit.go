@@ -7,8 +7,10 @@ import (
 	"github.com/OffchainLabs/prysm/v7/config/params"
 	"github.com/OffchainLabs/prysm/v7/crypto/bls"
 	"github.com/OffchainLabs/prysm/v7/crypto/hash"
+	"github.com/OffchainLabs/prysm/v7/encoding/bytesutil"
 	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 )
 
 // DepositInput for a given key. This input data can be used to when making a
@@ -81,6 +83,8 @@ func WithdrawalCredentialsHash(withdrawalKey bls.SecretKey) []byte {
 
 // VerifyDepositSignature verifies the correctness of Eth1 deposit BLS signature
 func VerifyDepositSignature(dd *ethpb.Deposit_Data, domain []byte) error {
+	log.Infof("SIGCHECK: ---- VERIFY ----")
+
 	ddCopy := dd.Copy()
 	publicKey, err := bls.PublicKeyFromBytes(ddCopy.PublicKey)
 	if err != nil {
@@ -90,6 +94,9 @@ func VerifyDepositSignature(dd *ethpb.Deposit_Data, domain []byte) error {
 	if err != nil {
 		return errors.Wrap(err, "could not convert bytes to signature")
 	}
+
+	log.Infof("SIGCHECK: signature bytes=%#x", bytesutil.Trunc(ddCopy.Signature))
+
 	di := &ethpb.DepositMessage{
 		PublicKey:             ddCopy.PublicKey,
 		WithdrawalCredentials: ddCopy.WithdrawalCredentials,
@@ -99,6 +106,9 @@ func VerifyDepositSignature(dd *ethpb.Deposit_Data, domain []byte) error {
 	if err != nil {
 		return errors.Wrap(err, "could not get signing root")
 	}
+
+	log.Infof("SIGCHECK: deposit_message_root=%#x", root)
+
 	signingData := &ethpb.SigningData{
 		ObjectRoot: root[:],
 		Domain:     domain,
@@ -107,8 +117,13 @@ func VerifyDepositSignature(dd *ethpb.Deposit_Data, domain []byte) error {
 	if err != nil {
 		return errors.Wrap(err, "could not get container root")
 	}
+
+	log.Infof("SIGCHECK: signing_root (object+domain)=%#x", ctrRoot)
+	log.Infof("SIGCHECK: domain used=%#x", domain)
 	if !sig.Verify(publicKey, ctrRoot[:]) {
 		return signing.ErrSigFailedToVerify
 	}
+	log.Infof("SIGCHECK: BLS VERIFY OK")
+
 	return nil
 }

@@ -315,6 +315,20 @@ func (s *Service) onBlockBatch(ctx context.Context, blks []consensusblocks.ROBlo
 		headRoot:  lastBR,
 		headBlock: lastB,
 	}
+
+	log.Info("OnBlockBatch FCU CALL",
+		"has_attributes", arg.attributes != nil,
+	)
+
+	if arg.attributes != nil {
+		pb, err := arg.attributes.PbV3()
+		if err != nil {
+			log.WithError(err).Error("PbV3 failed")
+		} else {
+			log.Infof("onBlockBatch FCU SEND: validatorRegistrations = %d", len(pb.ValidatorRegistrations))
+		}
+	}
+
 	if _, err := s.notifyForkchoiceUpdate(ctx, arg); err != nil {
 		return err
 	}

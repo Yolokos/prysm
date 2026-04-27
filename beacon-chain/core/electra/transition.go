@@ -53,6 +53,7 @@ var (
 //	    process_participation_flag_updates(state)
 //	    process_sync_committee_updates(state)
 func ProcessEpoch(ctx context.Context, state state.BeaconState) error {
+	logrus.Infof("STATE GENESIS ROOT = %#x", state.GenesisValidatorsRoot())
 	_, span := trace.StartSpan(ctx, "electra.ProcessEpoch")
 	defer span.End()
 

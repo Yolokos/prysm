@@ -8,6 +8,7 @@ import (
 	enginev1 "github.com/OffchainLabs/prysm/v7/proto/engine/v1"
 	"github.com/OffchainLabs/prysm/v7/runtime/version"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -21,6 +22,8 @@ type data struct {
 	suggestedFeeRecipient []byte
 	withdrawals           []*enginev1.Withdrawal
 	parentBeaconBlockRoot []byte
+
+	validatorRegistrations []*enginev1.ValidatorRegistration
 }
 
 var (
@@ -84,13 +87,16 @@ func initPayloadAttributeFromV3(a *enginev1.PayloadAttributesV3) (Attributer, er
 		return nil, errNilPayloadAttribute
 	}
 
+	logrus.Infof("INIT V3: incoming validatorRegistrations = %d", len(a.ValidatorRegistrations))
+
 	return &data{
-		version:               version.Deneb,
-		prevRandao:            a.PrevRandao,
-		timeStamp:             a.Timestamp,
-		suggestedFeeRecipient: a.SuggestedFeeRecipient,
-		withdrawals:           a.Withdrawals,
-		parentBeaconBlockRoot: a.ParentBeaconBlockRoot,
+		version:                version.Deneb,
+		prevRandao:             a.PrevRandao,
+		timeStamp:              a.Timestamp,
+		suggestedFeeRecipient:  a.SuggestedFeeRecipient,
+		withdrawals:            a.Withdrawals,
+		parentBeaconBlockRoot:  a.ParentBeaconBlockRoot,
+		validatorRegistrations: a.ValidatorRegistrations,
 	}, nil
 }
 

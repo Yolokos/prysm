@@ -11,6 +11,7 @@ import (
 	ethpb "github.com/OffchainLabs/prysm/v7/proto/prysm/v1alpha1"
 	"github.com/pkg/errors"
 	fssz "github.com/prysmaticlabs/fastssz"
+	log "github.com/sirupsen/logrus"
 )
 
 // ForkVersionByteLength length of fork version byte array.
@@ -228,12 +229,22 @@ func BlockSignatureBatch(pub, signature, domain []byte, rootFunc func() ([32]byt
 //	fork_data_root = compute_fork_data_root(fork_version, genesis_validators_root)
 //	return Domain(domain_type + fork_data_root[:28])
 func ComputeDomain(domainType [DomainByteLength]byte, forkVersion, genesisValidatorsRoot []byte) ([]byte, error) {
+	log.Infof("DOMAIN DEBUG: domainType = %#x", domainType)
+
 	if forkVersion == nil {
+		log.Infof("DOMAIN DEBUG: forkVersion is nil → using config")
 		forkVersion = params.BeaconConfig().GenesisForkVersion
 	}
 	if genesisValidatorsRoot == nil {
+		log.Infof("DOMAIN DEBUG: genesisValidatorsRoot is nil → using ZERO HASH")
 		genesisValidatorsRoot = params.BeaconConfig().ZeroHash[:]
+	} else {
+		log.Infof("DOMAIN DEBUG: genesisValidatorsRoot provided = %#x", genesisValidatorsRoot)
 	}
+
+	log.Infof("DOMAIN DEBUG: final forkVersion = %#x", forkVersion)
+	log.Infof("DOMAIN DEBUG: final genesisValidatorsRoot = %#x", genesisValidatorsRoot)
+
 	var forkBytes [ForkVersionByteLength]byte
 	copy(forkBytes[:], forkVersion)
 
@@ -242,7 +253,12 @@ func ComputeDomain(domainType [DomainByteLength]byte, forkVersion, genesisValida
 		return nil, err
 	}
 
-	return domain(domainType, forkDataRoot[:]), nil
+	log.Infof("DOMAIN DEBUG: forkDataRoot = %#x", forkDataRoot)
+
+	d := domain(domainType, forkDataRoot[:])
+	log.Infof("DOMAIN DEBUG: FINAL DOMAIN = %#x", d)
+
+	return d, nil
 }
 
 // This returns the bls domain given by the domain type and fork data root.

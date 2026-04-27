@@ -1385,17 +1385,23 @@ func (x *PayloadAttributesV2) GetWithdrawals() []*Withdrawal {
 	return nil
 }
 
-type PayloadAttributesV3 struct {
-	state                 protoimpl.MessageState `protogen:"open.v1"`
-	Timestamp             uint64                 `protobuf:"varint,1,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
-	PrevRandao            []byte                 `protobuf:"bytes,2,opt,name=prev_randao,json=prevRandao,proto3" json:"prev_randao,omitempty" ssz-size:"32"`
-	SuggestedFeeRecipient []byte                 `protobuf:"bytes,3,opt,name=suggested_fee_recipient,json=suggestedFeeRecipient,proto3" json:"suggested_fee_recipient,omitempty" ssz-size:"20"`
-	Withdrawals           []*Withdrawal          `protobuf:"bytes,4,rep,name=withdrawals,proto3" json:"withdrawals,omitempty" ssz-max:"16"`
-	ParentBeaconBlockRoot []byte                 `protobuf:"bytes,5,opt,name=parent_beacon_block_root,json=parentBeaconBlockRoot,proto3" json:"parent_beacon_block_root,omitempty" ssz-size:"32"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+type ValidatorRegistration struct {
+	state         protoimpl.MessageState
+	Pubkey        []byte `protobuf:"bytes,1,opt,name=pubkey,proto3" json:"pubkey,omitempty" ssz-size:"48"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
 
-	ValidatorRegistrations [][]byte
+type PayloadAttributesV3 struct {
+	state                  protoimpl.MessageState   `protogen:"open.v1"`
+	Timestamp              uint64                   `protobuf:"varint,1,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	PrevRandao             []byte                   `protobuf:"bytes,2,opt,name=prev_randao,json=prevRandao,proto3" json:"prev_randao,omitempty" ssz-size:"32"`
+	SuggestedFeeRecipient  []byte                   `protobuf:"bytes,3,opt,name=suggested_fee_recipient,json=suggestedFeeRecipient,proto3" json:"suggested_fee_recipient,omitempty" ssz-size:"20"`
+	Withdrawals            []*Withdrawal            `protobuf:"bytes,4,rep,name=withdrawals,proto3" json:"withdrawals,omitempty" ssz-max:"16"`
+	ParentBeaconBlockRoot  []byte                   `protobuf:"bytes,5,opt,name=parent_beacon_block_root,json=parentBeaconBlockRoot,proto3" json:"parent_beacon_block_root,omitempty" ssz-size:"32"`
+	ValidatorRegistrations []*ValidatorRegistration `protobuf:"bytes,6,rep,name=validator_registrations,json=validatorRegistrations,proto3" json:"validator_registrations,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *PayloadAttributesV3) Reset() {
